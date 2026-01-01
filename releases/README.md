@@ -1,0 +1,21 @@
+# Releases
+
+Dieses Verzeichnis enthält detaillierte Release Notes für jede Version des Gentoo System Updaters.
+
+## Verfügbare Releases
+
+- [v1.0.0](v1.0.0.md) - Initiales Release (2026-01-01)
+
+## Format
+
+Jede Release-Datei enthält:
+- 📋 Übersicht der Änderungen
+- ✨ Neue Features
+- 🐛 Behobene Bugs
+- 🔧 Verbesserungen
+- 📦 Installationsanweisungen
+- 🚀 Verwendungsbeispiele
+
+## Changelog
+
+Für eine vollständige Versionshistorie siehe [CHANGELOG.md](../CHANGELOG.md).
