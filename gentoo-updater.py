@@ -8,6 +8,8 @@ import subprocess
 import sys
 import os
 import argparse
+import shutil
+import time
 from datetime import datetime
 from typing import Optional, List
 
@@ -28,9 +30,10 @@ class Colors:
 class GentooUpdater:
     """Hauptklasse für Gentoo System-Updates"""
     
-    def __init__(self, verbose: bool = False, dry_run: bool = False):
+    def __init__(self, verbose: bool = False, dry_run: bool = False, rebuild_modules: bool = False):
         self.verbose = verbose
         self.dry_run = dry_run
+        self.rebuild_modules = rebuild_modules
         self.log_file = f"/var/log/gentoo-updater-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
         
     def print_section(self, message: str):
@@ -61,6 +64,18 @@ class GentooUpdater:
             self.print_error("Dieses Skript benötigt Root-Rechte.")
             self.print_info("Bitte mit sudo ausführen: sudo gentoo-updater")
             sys.exit(1)
+    
+    def cleanup_manifest_quarantine(self):
+        """Räumt beschädigte Manifest-Dateien auf"""
+        quarantine_dir = "/var/db/repos/gentoo/.tmp-unverified-download-quarantine"
+        
+        if os.path.exists(quarantine_dir):
+            self.print_info(f"Räume auf: {quarantine_dir}")
+            try:
+                shutil.rmtree(quarantine_dir)
+                self.print_success("Quarantine-Verzeichnis gelöscht")
+            except Exception as e:
+                self.print_warning(f"Konnte Quarantine nicht löschen: {str(e)}")
             
     def run_command(self, command: List[str], description: str, 
                     allow_fail: bool = False) -> bool:
@@ -116,13 +131,31 @@ class GentooUpdater:
                 sys.exit(1)
             return False
             
-    def sync_repositories(self):
-        """Synchronisiert die Portage-Repositories"""
-        self.print_section("SCHRITT 1: Repository-Synchronisation")
-        return self.run_command(
+    def sync_repositories(self, retry: int = 1):
+        """Synchronisiert die Portage-Repositories
+        
+        Args:
+            retry: Anzahl der Wiederholungsversuche bei Manifest-Fehler
+        """
+        self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
+        
+        success = self.run_command(
             ["emerge", "--sync"],
-            "Synchronisiere Portage-Repositories"
+            "Synchronisiere Portage-Repositories",
+            allow_fail=True
         )
+        
+        # Bei Fehler: Quarantine aufräumen und nochmal versuchen
+        if not success and retry < 2:
+            self.print_warning("Sync fehlgeschlagen - räume auf und versuche erneut...")
+            self.cleanup_manifest_quarantine()
+            
+            # Warte kurz, bevor Retry
+            time.sleep(2)
+            
+            return self.sync_repositories(retry=2)
+        
+        return success
         
     def update_eix(self):
         """Aktualisiert die eix-Datenbank"""
@@ -165,18 +198,129 @@ class GentooUpdater:
             self.print_error(f"Fehler beim Prüfen der Updates: {str(e)}")
             return False
             
-    def update_system(self):
-        """Aktualisiert das gesamte System"""
+    def update_system(self) -> tuple[bool, bool]:
+        """Aktualisiert das gesamte System
+        
+        Returns:
+            Tuple (success, kernel_updated): Erfolg und ob Kernel aktualisiert wurde
+        """
         self.print_section("SCHRITT 4: System-Update")
-        return self.run_command(
+        
+        # Prüfe welche Pakete aktualisiert werden (mit --pretend)
+        self.print_info("Analysiere zu aktualisierende Pakete...")
+        try:
+            result = subprocess.run(
+                ["emerge", "--update", "--deep", "--newuse", 
+                 "--with-bdeps=y", "--pretend", "@world"],
+                capture_output=True,
+                text=True
+            )
+            kernel_updated = "sys-kernel/" in result.stdout and "-sources" in result.stdout
+            if kernel_updated:
+                self.print_warning("Kernel-Update erkannt! Module werden nach dem Update neu gebaut.")
+        except:
+            kernel_updated = False
+        
+        # Führe das eigentliche Update durch
+        success = self.run_command(
             ["emerge", "--update", "--deep", "--newuse", 
              "--with-bdeps=y", "@world"],
             "Aktualisiere System-Pakete"
         )
         
+        return success, kernel_updated
+        
+    def check_kernel_module_mismatch(self) -> bool:
+        """Prüft, ob Kernel-Module für den aktuellen Kernel fehlen oder veraltet sind
+        
+        Returns:
+            True wenn Module neu gebaut werden müssen, sonst False
+        """
+        self.print_info("Prüfe Kernel-Module Status...")
+        
+        try:
+            # Prüfe ob @module-rebuild Pakete existieren und veraltet sind
+            result = subprocess.run(
+                ["emerge", "--pretend", "@module-rebuild"],
+                capture_output=True,
+                text=True
+            )
+            
+            # Wenn Pakete gefunden werden, sind sie entweder veraltet oder nicht für aktuellen Kernel gebaut
+            if "Total: 0 packages" not in result.stdout:
+                self.print_warning("Veraltete oder fehlende Kernel-Module erkannt!")
+                return True
+            
+            # Zusätzlich: Prüfe ob laufender Kernel != installierter Kernel
+            running_kernel = subprocess.run(
+                ["uname", "-r"],
+                capture_output=True,
+                text=True
+            ).stdout.strip()
+            
+            # Prüfe neuesten installierten Kernel
+            eselect_result = subprocess.run(
+                ["eselect", "kernel", "show"],
+                capture_output=True,
+                text=True
+            )
+            
+            if eselect_result.returncode == 0:
+                selected_kernel = eselect_result.stdout.strip()
+                if selected_kernel and running_kernel not in selected_kernel:
+                    self.print_warning(f"Laufender Kernel ({running_kernel}) != Installierter Kernel ({selected_kernel})")
+                    self.print_info("Module sollten für den neuen Kernel gebaut werden")
+                    return True
+            
+        except Exception as e:
+            self.print_warning(f"Konnte Modul-Status nicht prüfen: {str(e)}")
+            return False
+        
+        return False
+    
+    def rebuild_kernel_modules(self, force: bool = False):
+        """Baut externe Kernel-Module neu (NVIDIA, VirtualBox, etc.)
+        
+        Args:
+            force: Wenn True, wird ohne Prüfung neu gebaut
+        """
+        self.print_section("SCHRITT 5: Kernel-Module neu kompilieren")
+        
+        self.print_info("Überprüfe externe Kernel-Module...")
+        
+        # Prüfe ob @module-rebuild Set Pakete enthält
+        try:
+            result = subprocess.run(
+                ["emerge", "--pretend", "@module-rebuild"],
+                capture_output=True,
+                text=True
+            )
+            
+            if "Total: 0 packages" in result.stdout:
+                self.print_success("Keine externen Kernel-Module gefunden (oder bereits aktuell)")
+                return True
+            else:
+                self.print_info("Folgende Module werden neu gebaut:")
+                print(result.stdout)
+        except Exception as e:
+            self.print_warning(f"Konnte Module nicht prüfen: {str(e)}")
+        
+        # Baue Module neu
+        success = self.run_command(
+            ["emerge", "@module-rebuild"],
+            "Kompiliere Kernel-Module neu",
+            allow_fail=True
+        )
+        
+        if success:
+            self.print_success("Alle Kernel-Module erfolgreich neu gebaut")
+            self.print_info("Tipp: Nach einem Neustart werden die neuen Module verwendet")
+        
+        return success
+    
     def depclean(self):
         """Entfernt nicht mehr benötigte Pakete"""
-        self.print_section("SCHRITT 5: Bereinige verwaiste Pakete")
+        self.print_section("SCHRITT 6: Bereinige verwaiste Pakete")
         return self.run_command(
             ["emerge", "--depclean", "--ask=n"],
             "Entferne nicht mehr benötigte Pakete",
@@ -185,7 +329,7 @@ class GentooUpdater:
         
     def revdep_rebuild(self):
         """Baut Pakete mit kaputten Abhängigkeiten neu"""
-        self.print_section("SCHRITT 6: Prüfe und repariere Abhängigkeiten")
+        self.print_section("SCHRITT 7: Prüfe und repariere Abhängigkeiten")
         
         # Prüfe ob revdep-rebuild verfügbar ist
         try:
@@ -203,7 +347,7 @@ class GentooUpdater:
         
     def check_kernel_updates(self):
         """Prüft ob Kernel-Updates verfügbar sind"""
-        self.print_section("SCHRITT 7: Kernel-Update-Prüfung")
+        self.print_section("SCHRITT 8: Kernel-Update-Prüfung")
         
         try:
             # Prüfe installierte Kernel-Quellen
@@ -232,7 +376,7 @@ class GentooUpdater:
             
     def check_config_updates(self):
         """Prüft auf Konfigurations-Updates"""
-        self.print_section("SCHRITT 8: Konfigurationsdateien prüfen")
+        self.print_section("SCHRITT 9: Konfigurationsdateien prüfen")
         
         try:
             # Suche nach ._cfg Dateien
@@ -252,6 +396,32 @@ class GentooUpdater:
         except Exception as e:
             self.print_warning(f"Konfigurations-Prüfung fehlgeschlagen: {str(e)}")
             
+    def run_modules_only(self):
+        """Baut nur Kernel-Module neu (ohne System-Update)"""
+        start_time = datetime.now()
+        
+        print(f"{Colors.BOLD}{Colors.OKCYAN}")
+        print("╔════════════════════════════════════════════════════════════════════╗")
+        print("║       KERNEL-MODULE NEU KOMPILIEREN                              ║")
+        print("╚════════════════════════════════════════════════════════════════════╝")
+        print(f"{Colors.ENDC}")
+        
+        self.check_root_privileges()
+        
+        # Prüfe Modul-Status
+        needs_rebuild = self.check_kernel_module_mismatch()
+        
+        if needs_rebuild or self.rebuild_modules:
+            self.rebuild_kernel_modules(force=True)
+        else:
+            self.print_success("Alle Kernel-Module sind bereits aktuell!")
+        
+        end_time = datetime.now()
+        duration = end_time - start_time
+        
+        self.print_section("Modul-Rebuild abgeschlossen")
+        self.print_success(f"Gesamtdauer: {duration}")
+    
     def run_full_update(self):
         """Führt ein komplettes System-Update durch"""
         start_time = datetime.now()
@@ -264,8 +434,13 @@ class GentooUpdater:
         
         self.check_root_privileges()
         
+        # Vorbereitung: Räume Manifest-Fehler auf
+        self.cleanup_manifest_quarantine()
+        
         # Schritt 1: Sync
-        self.sync_repositories()
+        if not self.sync_repositories():
+            self.print_error("Repository-Synchronisation fehlgeschlagen nach 2 Versuchen")
+            sys.exit(1)
         
         # Schritt 2: eix-update
         self.update_eix()
@@ -282,18 +457,30 @@ class GentooUpdater:
             return
             
         # Schritt 4: System-Update
-        self.update_system()
+        success, kernel_updated = self.update_system()
+        if not success:
+            self.print_error("System-Update fehlgeschlagen")
+            sys.exit(1)
         
-        # Schritt 5: Depclean
+        # Schritt 5: Kernel-Module neu bauen
+        # Prüfe ob Module fehlen oder veraltet sind (auch ohne Update)
+        needs_module_rebuild = kernel_updated or self.check_kernel_module_mismatch()
+        
+        if needs_module_rebuild:
+            self.rebuild_kernel_modules(force=kernel_updated)
+        else:
+            self.print_success("Kernel-Module sind aktuell - keine Neucompilierung nötig")
+        
+        # Schritt 6: Depclean
         self.depclean()
         
-        # Schritt 6: revdep-rebuild
+        # Schritt 7: revdep-rebuild
         self.revdep_rebuild()
         
-        # Schritt 7: Kernel-Check
+        # Schritt 8: Kernel-Check
         self.check_kernel_updates()
         
-        # Schritt 8: Config-Check
+        # Schritt 9: Config-Check
         self.check_config_updates()
         
         # Zusammenfassung
@@ -324,15 +511,27 @@ Beispiele:
     parser.add_argument('-n', '--dry-run',
                        action='store_true', 
                        help='Zeige nur was gemacht würde, ohne es auszuführen')
+    parser.add_argument('--rebuild-modules',
+                       action='store_true',
+                       help='Erzwingt Neucompilierung der Kernel-Module')
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.0.0')
+                       version='Gentoo Updater v1.1.0')
     
     args = parser.parse_args()
     
     try:
-        updater = GentooUpdater(verbose=args.verbose, dry_run=args.dry_run)
-        updater.run_full_update()
+        updater = GentooUpdater(
+            verbose=args.verbose, 
+            dry_run=args.dry_run,
+            rebuild_modules=args.rebuild_modules
+        )
+        
+        # Wenn nur Module neu gebaut werden sollen
+        if args.rebuild_modules:
+            updater.run_modules_only()
+        else:
+            updater.run_full_update()
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Update durch Benutzer abgebrochen{Colors.ENDC}")
         sys.exit(130)

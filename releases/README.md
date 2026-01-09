@@ -4,7 +4,8 @@ Dieses Verzeichnis enthält detaillierte Release Notes für jede Version des Gen
 
 ## Verfügbare Releases
 
-- [v1.0.0](v1.0.0.md) - Initiales Release (2026-01-01)
+- [v1.1.0](v1.1.0.md) - Automatische Kernel-Modul-Neucompilierung (2025-01-10) ⭐ **NEUESTE**
+- [v1.0.0](v1.0.0.md) - Initiales Release (2025-01-01)
 
 ## Format
 

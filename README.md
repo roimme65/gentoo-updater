@@ -4,15 +4,20 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 
 ## Features
 
-- 🔄 **Repository-Synchronisation** (`emerge --sync`)
+- 🔄 **Repository-Synchronisation** (`emerge --sync`) mit automatischem Retry bei Manifest-Fehlern
 - 📚 **eix-Datenbank Update** (falls eix installiert ist)
 - 📦 **System-Update** (vollständiges `@world` Update mit deep und newuse)
+- 🔧 **Automatische Kernel-Modul-Neucompilierung** (NVIDIA, VirtualBox, etc.)
+  - Erkennt Kernel-Updates automatisch
+  - Baut externe Module neu mit `@module-rebuild`
+  - Prüft auch nachträglich auf veraltete Module
 - 🧹 **Automatisches Cleanup** (`emerge --depclean`)
 - 🔧 **Dependency-Reparatur** (`revdep-rebuild`)
 - 🐧 **Kernel-Update-Prüfung**
 - ⚙️ **Konfigurations-Update-Prüfung** (._cfg Dateien)
 - 🎨 **Farbige Ausgabe** mit klarer Struktur
 - ⚡ **Dry-Run Modus** zum Testen
+- 🛡️ **Robuste Fehlerbehandlung** mit Quarantine-Cleanup
 
 ## Voraussetzungen
 
@@ -66,6 +71,20 @@ sudo gentoo-updater --dry-run
 sudo gentoo-updater --verbose
 ```
 
+### Kernel-Module neu kompilieren
+
+Nützlich nach einem manuellen Kernel-Update oder wenn Module fehlen:
+
+```bash
+sudo gentoo-updater --rebuild-modules
+```
+
+Dies baut alle externen Kernel-Module neu:
+- NVIDIA-Treiber (`nvidia-drivers`)
+- VirtualBox-Module (`virtualbox-modules`)
+- ZFS-Module
+- Weitere externe Module
+
 ### Hilfe anzeigen
 
 ```bash
@@ -89,33 +108,40 @@ Das Skript führt folgende Schritte automatisch aus:
 4. **System-Update**
    - `emerge --update --deep --newuse --with-bdeps=y @world`
    - Aktualisiert alle installierten Pakete
+   - Erkennt automatisch Kernel-Updates
 
-5. **Cleanup**
+5. **Kernel-Module neu kompilieren** (nur bei Kernel-Update oder veralteten Modulen)
+   - `emerge @module-rebuild`
+   - Baut NVIDIA, VirtualBox und andere externe Module neu
+   - Prüft Kernel-Version-Mismatch
+
+6. **Cleanup**
    - `emerge --depclean` entfernt nicht mehr benötigte Pakete
 
-6. **Dependency-Reparatur**
+7. **Dependency-Reparatur**
    - `revdep-rebuild` repariert kaputte Abhängigkeiten (falls gentoolkit installiert)
 
-7. **Kernel-Prüfung**
+8. **Kernel-Prüfung**
    - Zeigt verfügbare Kernel-Versionen an
    - Gibt Hinweise für manuelle Kernel-Updates
 
-8. **Konfigurations-Prüfung**
+9. **Konfigurations-Prüfung**
    - Sucht nach ._cfg Dateien
    - Weist auf notwendige Konfigurations-Updates hin
 
 ## Optionen
 
 ```
-usage: gentoo-updater [-h] [-v] [-n] [--version]
+usage: gentoo-updater [-h] [-v] [-n] [--rebuild-modules] [--version]
 
 Gentoo System Updater - Automatisiert System-Updates
 
 optional arguments:
-  -h, --help     Zeige diese Hilfe
-  -v, --verbose  Ausführliche Ausgabe
-  -n, --dry-run  Zeige nur was gemacht würde, ohne es auszuführen
-  --version      Zeige Version
+  -h, --help          Zeige diese Hilfe
+  -v, --verbose       Ausführliche Ausgabe
+  -n, --dry-run       Zeige nur was gemacht würde, ohne es auszuführen
+  --rebuild-modules   Erzwingt Neucompilierung der Kernel-Module (ohne System-Update)
+  --version           Zeige Version (aktuell: v1.1.0)
 ```
 
 ## Sicherheit
@@ -148,9 +174,18 @@ sudo emerge --ask app-portage/gentoolkit
 
 ### Nach dem Update
 
-- Kernel-Updates müssen manuell durchgeführt werden
-- Konfigurations-Änderungen mit `dispatch-conf` oder `etc-update` prüfen
-- Bei wichtigen Updates: System neu starten
+- **Kernel-Updates** müssen manuell kompiliert werden:
+  ```bash
+  eselect kernel set <nummer>
+  cd /usr/src/linux
+  make oldconfig && make && make modules_install && make install
+  grub-mkconfig -o /boot/grub/grub.cfg
+  ```
+  **Aber:** Module werden automatisch neu gebaut!
+  
+- **Konfigurations-Änderungen** mit `dispatch-conf` oder `etc-update` prüfen
+- Bei Kernel- oder wichtigen Updates: **System neu starten**
+- Nach Neustart mit neuem Kernel laufen die neu kompilierten Module automatisch
 
 ## Fehlerbehebung
 
@@ -158,6 +193,24 @@ sudo emerge --ask app-portage/gentoolkit
 
 ```bash
 sudo gentoo-updater
+```
+
+### "Manifest verification failed"
+
+Das Skript behebt dies automatisch durch:
+1. Löschen des Quarantine-Verzeichnisses
+2. Automatischer Retry des Syncs
+
+Falls es dennoch fehlschlägt:
+```bash
+sudo rm -rf /var/db/repos/gentoo/.tmp-unverified-download-quarantine
+sudo emerge --sync
+```
+
+### Kernel-Module fehlen nach Kernel-Update
+
+```bash
+sudo gentoo-updater --rebuild-modules
 ```
 
 ### eix nicht gefunden
@@ -181,10 +234,33 @@ Das Skript erstellt automatisch Logs:
 ## Unterschiede zu anderen Distributionen
 
 Gentoo erfordert mehr manuelle Schritte als andere Distributionen:
-- **Kernel-Updates** sind manuell (nicht automatisiert)
+- **Kernel-Kompilierung** ist manuell (nicht automatisiert)
+  - ✅ Aber: Kernel-Module werden automatisch neu gebaut!
 - **Konfigurations-Updates** erfordern `dispatch-conf` oder `etc-update`
 - **Kompilierung** kann lange dauern (abhängig von Hardware und USE-Flags)
 - **USE-Flag-Änderungen** können Neukompilierung erfordern
+
+## Häufige Anwendungsfälle
+
+### Komplettes Wochenend-Update
+```bash
+sudo gentoo-updater
+# Warten bis fertig...
+# Kernel-Updates und Configs prüfen
+# System neu starten
+```
+
+### Schnelles Modul-Rebuild nach Kernel-Update
+```bash
+# Nach manuellem Kernel-Build:
+sudo gentoo-updater --rebuild-modules
+sudo reboot
+```
+
+### Testen ohne Änderungen
+```bash
+sudo gentoo-updater --dry-run
+```
 
 ## Lizenz
 
@@ -193,6 +269,20 @@ MIT License - Siehe LICENSE Datei
 ## Beiträge
 
 Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Issue.
+
+## Changelog
+
+### v1.1.0 (2025-01-10)
+- ✨ Automatische Kernel-Modul-Neucompilierung
+- ✨ Neue Option: `--rebuild-modules`
+- 🔧 Automatisches Manifest-Quarantine-Cleanup
+- 🔧 Retry-Mechanismus bei Sync-Fehlern
+- 📊 Intelligente Erkennung von Kernel-Updates
+- 📊 Prüfung auf veraltete Module auch ohne Update
+
+### v1.0.0 (2025-01-01)
+- 🎉 Initiales Release
+- Basis Update-Funktionalität
 
 ## Autor
 
