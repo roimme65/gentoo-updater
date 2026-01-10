@@ -233,25 +233,17 @@ class GentooUpdater:
     def check_kernel_module_mismatch(self) -> bool:
         """Prüft, ob Kernel-Module für den aktuellen Kernel fehlen oder veraltet sind
         
+        WICHTIG: Nur True zurückgeben wenn wirklich Kernel-Mismatch erkannt wird!
+        Nicht bei jedem Update die Module neu bauen!
+        
         Returns:
             True wenn Module neu gebaut werden müssen, sonst False
         """
         self.print_info("Prüfe Kernel-Module Status...")
         
         try:
-            # Prüfe ob @module-rebuild Pakete existieren und veraltet sind
-            result = subprocess.run(
-                ["emerge", "--pretend", "@module-rebuild"],
-                capture_output=True,
-                text=True
-            )
-            
-            # Wenn Pakete gefunden werden, sind sie entweder veraltet oder nicht für aktuellen Kernel gebaut
-            if "Total: 0 packages" not in result.stdout:
-                self.print_warning("Veraltete oder fehlende Kernel-Module erkannt!")
-                return True
-            
-            # Zusätzlich: Prüfe ob laufender Kernel != installierter Kernel
+            # HAUPTPRÜFUNG: Vergleiche laufenden Kernel mit installiertem Kernel
+            # Das ist die einzige zuverlässige Prüfung!
             running_kernel = subprocess.run(
                 ["uname", "-r"],
                 capture_output=True,
@@ -267,10 +259,17 @@ class GentooUpdater:
             
             if eselect_result.returncode == 0:
                 selected_kernel = eselect_result.stdout.strip()
+                # Entferne "*" und Extra-Zeichen aus eselect Output
+                selected_kernel = selected_kernel.replace("*", "").strip().split()[0] if selected_kernel else ""
+                
+                # Prüfe ob laufender Kernel != installierter Kernel
                 if selected_kernel and running_kernel not in selected_kernel:
                     self.print_warning(f"Laufender Kernel ({running_kernel}) != Installierter Kernel ({selected_kernel})")
-                    self.print_info("Module sollten für den neuen Kernel gebaut werden")
+                    self.print_info("Module müssen für den neuen Kernel neu gebaut werden")
                     return True
+                else:
+                    self.print_success("Laufender Kernel ist aktuell - Module müssen nicht neu gebaut werden")
+                    return False
             
         except Exception as e:
             self.print_warning(f"Konnte Modul-Status nicht prüfen: {str(e)}")
@@ -516,7 +515,7 @@ Beispiele:
                        help='Erzwingt Neucompilierung der Kernel-Module')
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.1.0')
+                       version='Gentoo Updater v1.1.1')
     
     args = parser.parse_args()
     

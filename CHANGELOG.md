@@ -5,6 +5,23 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.1.1] - 2025-01-10
+
+### Behoben
+- 🐛 **KRITISCH: Kernel-Module wurden bei jedem Update neu gebaut**
+  - Problem: `check_kernel_module_mismatch()` nutzte zu aggressive Prüfung
+  - Lösung: Nur Kernel-Version-Mismatch als Kriterium (uname -r vs eselect kernel show)
+  - Effekt: Module werden NICHT mehr unnötig bei jedem Update neu kompiliert
+- 🔧 **Optimierte Kernel-Versions-Prüfung**
+  - Bereinigt eselect Output korrekt
+  - Zuverlässigere Kernel-Versions-Erkennung
+  - Bessere String-Vergleiche
+
+### Versionsangabe
+- Version: v1.1.1 (Patch-Release)
+
+---
+
 ## [1.1.0] - 2025-01-10
 
 ### Hinzugefügt
