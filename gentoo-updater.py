@@ -259,8 +259,18 @@ class GentooUpdater:
             
             if eselect_result.returncode == 0:
                 selected_kernel = eselect_result.stdout.strip()
+                
                 # Entferne "*" und Extra-Zeichen aus eselect Output
-                selected_kernel = selected_kernel.replace("*", "").strip().split()[0] if selected_kernel else ""
+                # eselect kernel show gibt zurück: "Current: linux-6.12.63-gentoo-dist"
+                selected_kernel = selected_kernel.replace("*", "").strip()
+                
+                # Extrahiere Kernel-Namen nach dem Doppelpunkt (wenn vorhanden)
+                if ":" in selected_kernel:
+                    selected_kernel = selected_kernel.split(":")[-1].strip()
+                else:
+                    # Nehme das letzte nicht-leere Wort
+                    words = selected_kernel.split()
+                    selected_kernel = words[-1] if words else ""
                 
                 # Prüfe ob laufender Kernel != installierter Kernel
                 if selected_kernel and running_kernel not in selected_kernel:
@@ -515,7 +525,7 @@ Beispiele:
                        help='Erzwingt Neucompilierung der Kernel-Module')
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.1.1')
+                       version='Gentoo Updater v1.1.2')
     
     args = parser.parse_args()
     

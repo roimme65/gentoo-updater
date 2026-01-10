@@ -143,7 +143,7 @@ optional arguments:
   -v, --verbose       Ausführliche Ausgabe
   -n, --dry-run       Zeige nur was gemacht würde, ohne es auszuführen
   --rebuild-modules   Erzwingt Neucompilierung der Kernel-Module (ohne System-Update)
-  --version           Zeige Version (aktuell: v1.1.1)
+  --version           Zeige Version (aktuell: v1.1.2)
 ```
 
 ## Sicherheit
@@ -311,7 +311,7 @@ Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Iss
 
 ## Changelog
 
-### v1.1.1 (2025-01-10) - 🔧 Bug Fix
+### v1.1.2 (2025-01-10) - 🔧 Bug Fix
 - 🐛 **KRITISCH FIX:** Kernel-Module wurden bei jedem Update neu gebaut
   - Lösung: Nur bei echtem Kernel-Mismatch neu bauen
   - Effekt: 5-10 Minuten schneller bei Updates ohne Kernel-Change
