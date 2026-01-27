@@ -950,7 +950,7 @@ Beispiele:
                        help='Pfad zur Konfigurationsdatei')
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.2.3')
+                       version='Gentoo Updater v1.2.4')
     
     args = parser.parse_args()
     
