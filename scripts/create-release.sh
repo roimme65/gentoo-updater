@@ -272,18 +272,22 @@ fi
 
 # Schritt 3: CHANGELOG.md aktualisieren
 print_info "Aktualisiere CHANGELOG.md..."
-CHANGELOG_ENTRY="## [${NEW_VERSION}] - $(date +"%Y-%m-%d")
+
+# Temporäre Datei mit neuem Eintrag
+{
+    cat << EOFCHG
+## [${NEW_VERSION}] - $(date +"%Y-%m-%d")
 
 ### Siehe
 - Detaillierte Release-Notes: [releases/v${NEW_VERSION}.md](releases/v${NEW_VERSION}.md)
 
 ---
 
-"
+EOFCHG
+    cat CHANGELOG.md
+} > CHANGELOG.md.new
+mv CHANGELOG.md.new CHANGELOG.md
 
-# Füge nach der ersten Zeile mit ## ein
-sed -i "/^## \[/i\\
-$CHANGELOG_ENTRY" CHANGELOG.md
 print_success "CHANGELOG.md aktualisiert"
 
 # Schritt 4: Git commit
