@@ -5,6 +5,70 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.2.0] - 2025-01-27
+
+### Hinzugefügt
+- ⚡ **Performance-Optimierung**: Parallele Kompilierung mit automatischer CPU-Erkennung
+  - `--jobs` und `--load-average` werden automatisch gesetzt
+  - Konfigurierbar über Config-Datei
+  - Bis zu 50% schnellere Updates bei Multi-Core-Systemen
+- 📄 **Konfigurationssystem**: JSON-basierte Konfigurationsdatei
+  - Neue Option `--create-config` erstellt `/etc/gentoo-updater.conf`
+  - Neue Option `--config` für eigene Konfigurationsdatei
+  - Alle wichtigen Parameter konfigurierbar
+  - Beispiel-Config: `gentoo-updater.conf.example`
+- 💾 **Automatisches Backup-System**
+  - Sichert wichtige Konfigurationsdateien vor jedem Update
+  - Backup-Location: `/var/backups/gentoo-updater/`
+  - Automatische Bereinigung alter Backups
+- 📝 **Vollständiges Logging-System**
+  - Strukturierte Logs: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.log`
+  - JSON-Export für maschinelle Verarbeitung
+  - Automatische Log-Rotation
+  - Exception-Logging mit Stack-Traces
+- 📊 **Update-Zusammenfassung**
+  - Detaillierte Statistiken nach jedem Update
+  - Anzahl aktualisierter/entfernter Pakete
+  - Kernel- und Modul-Status
+  - Fehler- und Warnungs-Übersicht
+- 🔍 **Intelligente Prüfungen**
+  - Speicherplatz-Check vor Updates (konfigurierbar)
+  - Blockierte-Pakete-Erkennung vor Updates
+  - Kritische-Pakete-Warnungen (gcc, glibc, Python)
+- 📧 **E-Mail-Benachrichtigungen** (optional)
+  - Benachrichtigung nach Update-Abschluss
+  - Status-Meldung und Zusammenfassung
+  - Konfigurierbar über Config-Datei
+
+### Verbessert
+- 🔧 `run_command()` gibt jetzt auch Output zurück
+- 🔧 Besseres Exception-Handling mit vollständigem Logging
+- 🔧 Strukturierte Fehler- und Warnungs-Sammlung
+- 🔧 `check_updates()` gibt pretend-Output zurück
+- 🔧 `update_system()` nutzt Performance-Optionen
+- 🔧 Alle Methoden integriert mit Logging-System
+- 🔧 Finally-Blöcke für garantierte Zusammenfassung
+
+### Intern
+- 🏗️ Neue Klasse `Config` für Konfigurationsverwaltung
+- 🏗️ Erweiterte Imports: `json`, `re`, `pathlib`, `logging`
+- 🏗️ Stats-Dictionary für Update-Statistiken
+- 🏗️ Neue Hilfsmethoden:
+  - `setup_logging()`
+  - `check_disk_space()`
+  - `backup_important_files()`
+  - `cleanup_old_backups()`
+  - `check_blocked_packages()`
+  - `detect_critical_updates()`
+  - `extract_package_list()`
+  - `print_summary()`
+  - `save_summary_json()`
+  - `send_notification()`
+- 🏗️ Type Hints verbessert (`Tuple` statt `tuple`)
+- 🏗️ Version auf v1.2.0 erhöht
+
+---
+
 ## [1.1.2] - 2025-01-10
 
 ### Behoben

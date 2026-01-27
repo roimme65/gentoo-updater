@@ -1,0 +1,17 @@
+{
+  "emerge_jobs": "auto",
+  "emerge_load_average": "auto",
+  "enable_backups": true,
+  "backup_dir": "/var/backups/gentoo-updater",
+  "enable_notifications": false,
+  "notification_email": "",
+  "min_free_space_gb": 5,
+  "auto_depclean": true,
+  "auto_revdep_rebuild": true,
+  "critical_packages": [
+    "sys-devel/gcc",
+    "sys-libs/glibc",
+    "dev-lang/python"
+  ],
+  "log_retention_days": 30
+}

@@ -4,21 +4,37 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 
 ## Features
 
-- 🔄 **Repository-Synchronisation** (`emerge --sync`) mit automatischem Retry bei Manifest-Fehlern
-- 📚 **eix-Datenbank Update** (falls eix installiert ist)
-- 📦 **System-Update** (vollständiges `@world` Update mit deep und newuse)
+### 🚀 Performance & Optimierung
+- ⚡ **Parallele Kompilierung** mit automatischer CPU-Erkennung (`--jobs` und `--load-average`)
+- 📊 **Intelligente Update-Erkennung** - Kernel-Module nur bei Bedarf neu bauen
+- 💾 **Speicherplatz-Prüfung** vor Updates
+- 🔄 **Automatisches Retry** bei Manifest-Fehlern
+
+### 📦 Update-Funktionen
+- 🔄 **Repository-Synchronisation** (`emerge --sync`)
+- 📚 **eix-Datenbank Update** (optional)
+- 📦 **System-Update** (vollständiges `@world` Update)
 - 🔧 **Intelligente Kernel-Modul-Neucompilierung** (NVIDIA, VirtualBox, etc.)
-  - Erkennt Kernel-Updates automatisch
-  - Baut externe Module neu mit `@module-rebuild`
-  - Prüft auf Kernel-Mismatch (uname -r vs eselect kernel show)
-  - **Nicht** bei jedem Update - nur wenn nötig! (Performance: 5-10 Min schneller)
 - 🧹 **Automatisches Cleanup** (`emerge --depclean`)
 - 🔧 **Dependency-Reparatur** (`revdep-rebuild`)
-- 🐧 **Kernel-Update-Prüfung**
-- ⚙️ **Konfigurations-Update-Prüfung** (._cfg Dateien)
+
+### 🛡️ Sicherheit & Zuverlässigkeit
+- 💾 **Automatische Backups** wichtiger Konfigurationsdateien
+- 🔍 **Blockierte Pakete Prüfung** vor Updates
+- ⚠️ **Kritische Paket-Warnung** (gcc, glibc, Python)
+- 📝 **Vollständiges Logging-System** mit JSON-Export
+- 🎯 **Robuste Fehlerbehandlung** mit detaillierten Logs
+
+### 📊 Monitoring & Reports
+- 📈 **Update-Zusammenfassung** mit Statistiken
+- 📧 **E-Mail-Benachrichtigungen** (optional)
+- 📁 **Automatische Log-Rotation**
 - 🎨 **Farbige Ausgabe** mit klarer Struktur
+
+### ⚙️ Konfiguration
+- 📄 **JSON-Konfigurationsdatei** für individuelle Anpassungen
+- 🔧 **Flexible emerge-Optionen**
 - ⚡ **Dry-Run Modus** zum Testen
-- 🛡️ **Robuste Fehlerbehandlung** mit Quarantine-Cleanup
 
 ## Voraussetzungen
 
@@ -60,6 +76,29 @@ sudo cp gentoo-updater.py /usr/local/bin/gentoo-updater
 sudo gentoo-updater
 ```
 
+### Konfiguration erstellen
+
+Beim ersten Mal Default-Konfiguration erstellen:
+
+```bash
+sudo gentoo-updater --create-config
+```
+
+Dies erstellt `/etc/gentoo-updater.conf` mit folgenden Optionen:
+- **emerge_jobs**: Anzahl paralleler Jobs (auto = CPU-Kerne)
+- **emerge_load_average**: Maximale System-Last
+- **enable_backups**: Automatische Backups aktivieren
+- **backup_dir**: Verzeichnis für Backups
+- **enable_notifications**: E-Mail-Benachrichtigungen
+- **notification_email**: E-Mail-Adresse
+- **min_free_space_gb**: Mindest-Speicherplatz
+- **auto_depclean**: Automatisches depclean
+- **auto_revdep_rebuild**: Automatisches revdep-rebuild
+- **critical_packages**: Liste kritischer Pakete
+- **log_retention_days**: Log-Aufbewahrung in Tagen
+
+Beispiel-Config: siehe [gentoo-updater.conf.example](gentoo-updater.conf.example)
+
 ### Dry-Run (zeigt was gemacht würde)
 
 ```bash
@@ -86,6 +125,12 @@ Dies baut alle externen Kernel-Module neu:
 - ZFS-Module
 - Weitere externe Module
 
+### Eigene Konfigurationsdatei verwenden
+
+```bash
+sudo gentoo-updater --config /path/to/my-config.conf
+```
+
 ### Hilfe anzeigen
 
 ```bash
@@ -105,16 +150,19 @@ Das Skript führt folgende Schritte automatisch aus:
 3. **Update-Prüfung**
    - Prüft ob Updates verfügbar sind
    - Zeigt eine Liste aller zu aktualisierenden Pakete
+create-config] 
+                      [--config CONFIG] [--version]
 
-4. **System-Update**
-   - `emerge --update --deep --newuse --with-bdeps=y @world`
-   - Aktualisiert alle installierten Pakete
-   - Erkennt automatisch Kernel-Updates
+Gentoo System Updater - Automatisiert System-Updates
 
-5. **Kernel-Module neu kompilieren** (nur wenn nötig!)
-   - `emerge @module-rebuild`
-   - Baut NVIDIA, VirtualBox und andere externe Module neu
-   - Prüft Kernel-Version-Mismatch (uname -r vs eselect kernel show)
+optional arguments:
+  -h, --help            Zeige diese Hilfe
+  -v, --verbose         Ausführliche Ausgabe
+  -n, --dry-run         Zeige nur was gemacht würde, ohne es auszuführen
+  --rebuild-modules     Erzwingt Neucompilierung der Kernel-Module (ohne System-Update)
+  --create-config       Erstellt Default-Konfigurationsdatei
+  --config CONFIG       Pfad zur Konfigurationsdatei (Standard: /etc/gentoo-updater.conf)
+  --version             Zeige Version (aktuell: v1.2.0ect kernel show)
    - **Wird NICHT ausgeführt** wenn Kernel schon aktuell ist!
 
 6. **Cleanup**
@@ -195,11 +243,32 @@ sudo emerge --ask app-portage/gentoolkit
 
 ```bash
 sudo gentoo-updater
-```
+``` & Backups
 
-### "Manifest verification failed"
+### Logs
+Das Skript erstellt automatisch detaillierte Logs:
+- Log-Datei: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.log`
+- JSON-Summary: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.json`
+- Echtzeit-Ausgabe im Terminal
+- Automatische Log-Rotation (Standard: 30 Tage)
 
-Das Skript behebt dies automatisch durch:
+### Backups
+Vor jedem Update werden automatisch gesichert:
+- `/etc/portage/make.conf`
+- `/etc/portage/package.use`
+- `/etc/portage/package.accept_keywords`
+- `/var/lib/portage/world`
+
+Backup-Speicherort: `/var/backups/gentoo-updater/YYYYMMDD-HHMMSS/`
+
+### Update-Summary
+Nach jedem Update:
+- Anzahl aktualisierter Pakete
+- Anzahl entfernter Pakete
+- Kernel-Update Status
+- Modul-Rebuild Status
+- Fehler und Warnungen
+- Gesamt-Dauerisch durch:
 1. Löschen des Quarantine-Verzeichnisses
 2. Automatischer Retry des Syncs
 
@@ -258,7 +327,22 @@ sudo gentoo-updater
 sudo gentoo-updater --rebuild-modules
 sudo reboot
 ```
+2.0 (2025-01-27) - 🚀 Große Optimierung
+- ⚡ **Performance-Optimierung**: Parallele Kompilierung mit `--jobs` und `--load-average`
+- 📄 **Konfigurationssystem**: JSON-basierte Konfigurationsdatei
+- 💾 **Automatische Backups**: Wichtige Konfigurationsdateien werden gesichert
+- 📝 **Vollständiges Logging**: Detaillierte Logs mit JSON-Export
+- 📊 **Update-Zusammenfassung**: Statistiken und Reports nach Updates
+- 🔍 **Intelligente Prüfungen**: 
+  - Speicherplatz-Check vor Updates
+  - Blockierte Pakete Erkennung
+  - Kritische Paket-Warnungen (gcc, glibc, Python)
+- 📧 **E-Mail-Benachrichtigungen**: Optional nach Update-Abschluss
+- 🛡️ **Verbesserte Fehlerbehandlung**: Exception-Logging, finally-Blöcke
+- 🔧 **Neue Optionen**: `--create-config`, `--config`
+- 📁 **Log-Rotation**: Automatische Bereinigung alter Logs/Backups
 
+### v1.
 ### Testen ohne Änderungen
 ```bash
 sudo gentoo-updater --dry-run
