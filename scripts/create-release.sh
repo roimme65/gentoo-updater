@@ -2,10 +2,12 @@
 #
 # Gentoo Updater - Automatische Release-Erstellung
 #
-# Verwendung: ./scripts/create-release.sh [major|minor|patch]
+# Verwendung: ./scripts/create-release.sh [major|minor|patch] [--auto]
 #
 # Beispiel: ./scripts/create-release.sh patch
 #   → Bumpt 1.2.1 zu 1.2.2
+# Beispiel: ./scripts/create-release.sh patch --auto
+#   → Automatisch ohne Editor
 #
 
 set -e
@@ -61,8 +63,16 @@ print_info "Aktuelle Version: v$CURRENT_VERSION"
 # Parse Version
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 
-# Bestimme neue Version
+# Parse Argumente
 BUMP_TYPE=${1:-patch}
+AUTO_MODE=false
+
+if [[ "$2" == "--auto" ]] || [[ "$1" == "--auto" ]]; then
+    AUTO_MODE=true
+    if [[ "$1" == "--auto" ]]; then
+        BUMP_TYPE="patch"
+    fi
+fi
 
 case $BUMP_TYPE in
     major)
@@ -81,12 +91,16 @@ case $BUMP_TYPE in
         NEW_PATCH=$((PATCH + 1))
         ;;
     *)
-        print_error "Ungültiger Bump-Typ: $BUMP_TYPE (Erlaubt: major, minor, patch)"
-        exit 1
-        ;;
-esac
-
-NEW_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
+        print_error "Ungültig (außer im Auto-Mode)
+if [ "$AUTO_MODE" = false ]; then
+    read -p "$(echo -e ${YELLOW}Möchtest du mit dem Release v$NEW_VERSION fortfahren? [y/N] ${NC})" -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_warning "Release abgebrochen"
+        exit 0
+    fi
+else
+    print_info "Auto-Mode: Fahre automatisch fort mit v$NEW_VERSION"N="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
 print_info "Neue Version: v$NEW_VERSION ($BUMP_TYPE bump)"
 
 # Frage Nutzer um Bestätigung
@@ -98,13 +112,101 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Schritt 1: Version in gentoo-updater.py aktualisieren
-print_info "Aktualisiere Version in gentoo-updater.py..."
-sed -i "s/version='Gentoo Updater v[0-9.]*'/version='Gentoo Updater v$NEW_VERSION'/" gentoo-updater.py
-print_success "Version aktualisiert: v$NEW_VERSION"
-
-# Schritt 2: Release-Notes Template erstellen
+print_info "Aktualisiere Veerstellen oder generieren
 RELEASE_NOTES_FILE="releases/v${NEW_VERSION}.md"
+
+# Funktion: Generiere automatische Release-Notes aus Git-Commits
+generate_auto_release_notes() {
+    local prev_version="v${CURRENT_VERSION}"
+    local new_version="v${NEW_VERSION}"
+    
+    print_info "Analysiere Commits seit $prev_version..."
+    
+    # Hole Commits seit letztem Tag
+    local commits=$(git log ${prev_version}..HEAD --pretty=format:"%s" 2>/dev/null || echo "")
+    
+    # Kategorisiere Commits
+    local features=""
+    local improvements=""
+    local bugfixes=""
+    local other=""
+    
+    while IFS= read -r commit; do
+        [[ -z "$commit" ]] && continue
+        
+        if [[ "$commit" =~ ^(feat|feature|add|\+|✨) ]] || [[ "$commit" =~ [Nn]ew\ [Ff]eature ]]; then
+            features="${features}- ${commit#*: }\n"
+        elif [[ "$commit" =~ ^(fix|bug|🐛) ]]; then
+            bugfixes="${bugfixes}- ${commit#*: }\n"
+        elif [[ "$commit" =~ ^(improve|enhance|update|refactor|🔧|⚡) ]]; then
+            improvements="${improvements}- ${commit#*: }\n"
+        else
+            other="${other}- ${commit}\n"
+        fi
+    done <<< "$commits"
+    
+    # Wenn keine kategorisierten Commits, nutze "other"
+    if [[ -z "$features" && -z "$bugfixes" && -z "$improvements" ]]; then
+        improvements="$other"
+    fi
+    
+    # Default Werte wenn leer
+    [[ -z "$features" ]] && features="Keine neuen Features in diesem Release\n"
+    [[ -z "$improvements" ]] && improvements="Kleinere Verbesserungen und Dokumentationsupdates\n"
+    [[ -z "$bugfixes" ]] && bugfixes="Keine Bugfixes in diesem Release\n"
+    
+    # Erstelle Release-Notes
+    cat > "$RELEASE_NOTES_FILE" << EOF
+# Release v${NEW_VERSION}
+
+**Veröffentlicht:** $(date +"%-d. %B %Y")
+
+## Übersicht
+    print_success "Release-Notes Template erstellt: $RELEASE_NOTES_FILE"
+        print_warning "Bitte bearbeite die Release-Notes und führe das Skript dann erneut aus"
+        
+        # Öffne Editor
+        if command -v ${EDITOR:-nano} &> /dev/null; then
+            ${EDITOR:-nano} "$RELEASE_NOTES_FILE"
+        fi
+        
+        exit 0
+    fi
+$(echo -e "$improvements")
+
+## 🐛 Bugfixes
+
+$(echo -e "$bugfixes")
+
+## 📋 Breaking Changes
+
+Keine Breaking Changes - vollständig rückwärtskompatibel mit v${CURRENT_VERSION}
+
+## 🚀 Migration von v${CURRENT_VERSION}
+
+Keine Aktionen erforderlich - Update funktioniert transparent.
+
+## 🔗 Links
+
+- [CHANGELOG](../CHANGELOG.md)
+- [GitHub Release](https://github.com/roimme65/gentoo-updater/releases/tag/v${NEW_VERSION})
+
+---
+
+**Vielen Dank an alle Contributors! 🙏**
+EOF
+}
+
 if [ -f "$RELEASE_NOTES_FILE" ]; then
+    print_warning "Release-Notes existieren bereits: $RELEASE_NOTES_FILE"
+else
+    if [ "$AUTO_MODE" = true ]; then
+        print_info "Generiere automatische Release-Notes..."
+        generate_auto_release_notes
+        print_success "Release-Notes automatisch generiert: $RELEASE_NOTES_FILE"
+    else
+        print_info "Erstelle Release-Notes Template..."
+    if [ -f "$RELEASE_NOTES_FILE" ]; then
     print_warning "Release-Notes existieren bereits: $RELEASE_NOTES_FILE"
 else
     print_info "Erstelle Release-Notes Template..."
