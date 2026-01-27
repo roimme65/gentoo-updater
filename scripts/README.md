@@ -8,75 +8,114 @@ Automatisiert den kompletten Release-Prozess für den Gentoo Updater.
 
 ✨ **Vollautomatisch:**
 - Version-Bumping (major, minor, patch)
-- Release-Notes-Template-Generierung
+- **Automatische Release-Notes aus Git-Commits** (mit `--auto`)
+- **Intelligente Commit-Kategorisierung** (Features, Bugfixes, Improvements)
 - CHANGELOG-Update
 - Git-Commit und Tag
 - Push zu GitHub
-- Triggert automatisch GitHub Actions für Release-Erstellung
+- **Direktes GitHub Release erstellen** (via gh CLI)
 
 ### Verwendung
 
-#### Patch Release (1.2.1 → 1.2.2)
+#### 🚀 Vollautomatischer Modus (empfohlen)
+
 ```bash
+# Patch Release (1.2.3 → 1.2.4) - Bugfixes
+./scripts/create-release.sh patch --auto
+
+# Minor Release (1.2.3 → 1.3.0) - Neue Features
+./scripts/create-release.sh minor --auto
+
+# Major Release (1.2.3 → 2.0.0) - Breaking Changes
+./scripts/create-release.sh major --auto
+```
+
+**Das war's!** Ein Befehl macht alles:
+- ✅ Analysiert Commits seit letztem Release
+- ✅ Generiert Release-Notes automatisch
+- ✅ Updated Version + CHANGELOG
+- ✅ Erstellt Commit, Tag & Release
+- ✅ Alles auf GitHub
+
+#### 📝 Interaktiver Modus (mit Editor)
+
+```bash
+# Ohne --auto öffnet sich der Editor
 ./scripts/create-release.sh patch
 ```
 
-#### Minor Release (1.2.1 → 1.3.0)
-```bash
-./scripts/create-release.sh minor
+# Ohne --auto öffnet sich der Editor
+./scripts/create-release.sh patch
+
+# → Editor öffnet sich für manuelle Release-Notes
+# → Speichern und Skript nochmal ausführen
+./scripts/create-release.sh patch
 ```
 
-#### Major Release (1.2.1 → 2.0.0)
+### 🏷️ Commit-Message Kategorisierung
+
+Das Skript kategorisiert deine Commits automatisch für die Release-Notes:
+
+**Features:**
+- `feat:`, `feature:`, `add:`, `✨`
+- Beispiel: `feat: Add automatic backup rotation`
+
+**Bugfixes:**
+- `fix:`, `bug:`, `🐛`
+- Beispiel: `fix: Resolve dependency calculation bug`
+
+**Improvements:**
+- `improve:`, `enhance:`, `update:`, `refactor:`, `🔧`, `⚡`
+- Beispiel: `improve: Better error messages`
+
+### Workflow (Auto-Mode)
+
+**Ein-Befehl-Release:**
+
+### Workflow (Auto-Mode)
+
+**Ein-Befehl-Release:**
 ```bash
-./scripts/create-release.sh major
+# 1. Normale Änderungen committen
+git add -A
+git commit -m "improve: Better documentation"
+git push
+
+# 2. Release erstellen
+./scripts/create-release.sh patch --auto
+
+# ✅ Fertig! Release ist live auf GitHub
 ```
 
-### Workflow
+### Workflow (Interaktiv)
 
-1. **Beim ersten Aufruf:**
+1. **Erster Aufruf:**
    - Erstellt Release-Notes Template
    - Öffnet Editor zum Bearbeiten
-   - Beende das Skript
+   - Speichern und beenden
 
-2. **Beim zweiten Aufruf:**
-   - Liest vollständige Release-Notes
-   - Aktualisiert Version überall
-   - Erstellt Commit und Tag
-   - Pusht zu GitHub
-   - GitHub Actions erstellt automatisch das Release
+2. **Zweiter Aufruf:**
+   - Liest bearbeitete Release-Notes
+   - Erstellt Release automatisch
+
+### Was passiert automatisch?
+
+1. ✓ Version in `gewerden generiert (auto) oder Template erstellt (interaktiv)
+3. ✓ Git-Commits seit letztem Release werden analysiert
+4. ✓ Commits werden kategorisiert (Features/Bugfixes/Improvements)
+5. ✓ `CHANGELOG.md` wird aktualisiert
+6. ✓ Git-Commit wird erstellt
+7. ✓ Git-Tag `vX.Y.Z` wird erstellt
+8. ✓ Alles wird zu GitHub gepusht
+9. ✓ **GitHub Release wird direkt erstellt** (mit gh CLI)
+10. ✓ Assets werden hochgeladen (gentoo-updater.py, gentoo-updater.conf.example)
 
 ### Voraussetzungen
 
 ✅ **Git muss sauber sein** (keine uncommitted changes)  
 ✅ **Auf main Branch**  
 ✅ **SSH-Key für GitHub** konfiguriert
-
-### Beispiel
-
-```bash
-# 1. Patch Release starten
-./scripts/create-release.sh patch
-
-# → Öffnet Editor für Release-Notes
-# → Bearbeite die Notes und speichere
-
-# 2. Skript erneut ausführen
-./scripts/create-release.sh patch
-
-# → Erstellt Release v1.2.2
-# → Pusht zu GitHub
-# → GitHub Actions erstellt automatisch das Release
-
-# ✅ Fertig!
-```
-
-### Was passiert automatisch?
-
-1. ✓ Version in `gentoo-updater.py` wird aktualisiert
-2. ✓ Release-Notes in `releases/vX.Y.Z.md` werden erstellt/verwendet
-3. ✓ `CHANGELOG.md` wird aktualisiert
-4. ✓ Git-Commit wird erstellt
-5. ✓ Git-Tag `vX.Y.Z` wird erstellt
+✅ **gh CLI installiert und authentifiziert** (für direktes Release)lt
 6. ✓ Alles wird zu GitHub gepusht
 7. ✓ GitHub Actions erstellt automatisch das Release mit Assets
 
