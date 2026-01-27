@@ -195,15 +195,34 @@ git push origin main
 git push origin "v${NEW_VERSION}"
 print_success "Gepusht zu GitHub"
 
+# Schritt 7: Erstelle GitHub Release
+print_info "Erstelle GitHub Release..."
+
+# Warte kurz, damit GitHub den Tag registriert
+sleep 2
+
+# Erstelle Release mit gh CLI
+if command -v gh &> /dev/null; then
+    gh release create "v${NEW_VERSION}" \
+        --title "v${NEW_VERSION} - Gentoo System Updater" \
+        --notes-file "$RELEASE_NOTES_FILE" \
+        gentoo-updater.py \
+        gentoo-updater.conf.example
+    
+    if [ $? -eq 0 ]; then
+        print_success "GitHub Release erstellt: https://github.com/roimme65/gentoo-updater/releases/tag/v${NEW_VERSION}"
+    else
+        print_warning "GitHub Release konnte nicht erstellt werden. Prüfe gh CLI Authentifizierung."
+        print_info "Alternativ: GitHub Actions erstellt das Release automatisch."
+    fi
+else
+    print_warning "gh CLI nicht installiert. GitHub Actions erstellt das Release automatisch."
+fi
+
 # Fertig!
 echo ""
 print_success "🎉 Release v${NEW_VERSION} wurde erfolgreich erstellt!"
 echo ""
-print_info "GitHub Actions wird jetzt automatisch:"
-echo "  1. ✓ Version validieren"
-echo "  2. ✓ Python-Syntax prüfen"
-echo "  3. ✓ Release auf GitHub erstellen"
-echo "  4. ✓ Assets hochladen"
-echo ""
-print_info "Verfolge den Workflow: https://github.com/roimme65/gentoo-updater/actions"
+print_info "Das Release ist verfügbar unter:"
+echo "  https://github.com/roimme65/gentoo-updater/releases/tag/v${NEW_VERSION}"
 echo ""
