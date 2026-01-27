@@ -5,6 +5,13 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.2.2] - 2026-01-27
+
+### Siehe
+- Detaillierte Release-Notes: [releases/v1.2.2.md](releases/v1.2.2.md)
+
+---
+
 ## [1.2.0] - 2025-01-27
 
 ### Hinzugefügt
