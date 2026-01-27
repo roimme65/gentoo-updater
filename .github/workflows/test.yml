@@ -1,0 +1,149 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  syntax-check:
+    name: Python Syntax Check
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile gentoo-updater.py
+          echo "✓ Python 3.11 syntax valid"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check Python 3.12 compatibility
+        run: |
+          python -m py_compile gentoo-updater.py
+          echo "✓ Python 3.12 compatible"
+
+  code-quality:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check for TODO/FIXME
+        run: |
+          echo "Checking for TODO/FIXME comments..."
+          grep -n "TODO\|FIXME" gentoo-updater.py || echo "✓ No TODO/FIXME found"
+
+      - name: Verify shebang
+        run: |
+          if head -n 1 gentoo-updater.py | grep -q "^#!/usr/bin/env python3"; then
+            echo "✓ Correct shebang found"
+          else
+            echo "❌ Invalid shebang"
+            exit 1
+          fi
+
+      - name: Check file permissions
+        run: |
+          if [ -x gentoo-updater.py ]; then
+            echo "✓ Script is executable"
+          else
+            echo "⚠ Script is not executable (will be fixed on install)"
+          fi
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify required files
+        run: |
+          REQUIRED_FILES=(
+            "README.md"
+            "CHANGELOG.md"
+            "LICENSE"
+            "SECURITY.md"
+            "gentoo-updater.py"
+            "gentoo-updater.conf.example"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✓ $file exists"
+            else
+              echo "❌ Missing: $file"
+              exit 1
+            fi
+          done
+
+      - name: Check README completeness
+        run: |
+          SECTIONS=(
+            "## Features"
+            "## Installation"
+            "## Verwendung"
+            "## Changelog"
+          )
+          
+          for section in "${SECTIONS[@]}"; do
+            if grep -q "$section" README.md; then
+              echo "✓ Found: $section"
+            else
+              echo "❌ Missing section: $section"
+              exit 1
+            fi
+          done
+
+  config-validation:
+    name: Config File Validation
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate JSON config
+        run: |
+          python3 -m json.tool gentoo-updater.conf.example > /dev/null
+          echo "✓ Config file is valid JSON"
+
+      - name: Check required config keys
+        run: |
+          REQUIRED_KEYS=(
+            "emerge_jobs"
+            "emerge_load_average"
+            "enable_backups"
+            "backup_dir"
+            "min_free_space_gb"
+          )
+          
+          for key in "${REQUIRED_KEYS[@]}"; do
+            if grep -q "\"$key\"" gentoo-updater.conf.example; then
+              echo "✓ Config key exists: $key"
+            else
+              echo "❌ Missing config key: $key"
+              exit 1
+            fi
+          done
