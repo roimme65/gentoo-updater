@@ -1,3 +1,10 @@
+## [1.2.3] - 2026-01-27
+
+### Siehe
+- Detaillierte Release-Notes: [releases/v1.2.3.md](releases/v1.2.3.md)
+
+---
+
 # Changelog
 
 Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
