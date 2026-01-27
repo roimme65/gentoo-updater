@@ -6,7 +6,9 @@ Die folgenden Versionen des Gentoo System Updaters werden mit Sicherheitsupdates
 
 | Version | Unterstützt        | Status |
 | ------- | ------------------ | ------ |
-| 1.0.x   | :white_check_mark: | Aktuelle stabile Version |
+| 1.2.x   | :white_check_mark: | Aktuelle stabile Version |
+| 1.1.x   | :white_check_mark: | Unterstützt bis 30.06.2026 |
+| 1.0.x   | :x:                | Nicht mehr unterstützt |
 | < 1.0   | :x:                | Entwicklungsversionen |
 
 ## Sicherheitsüberlegungen
@@ -30,13 +32,19 @@ Wenn Sie Cronjobs einrichten, werden diese mit Root-Rechten ausgeführt:
 
 ### Datenverarbeitung
 - Das Tool speichert keine sensiblen Daten
-- Log-Dateien enthalten Paketinformationen und Systemausgaben
+- Log-Dateien enthalten Paketinformationen und Systemausgaben (ab v1.2.0)
+- JSON-Export von Update-Statistiken (ab v1.2.0, keine sensiblen Daten)
+- Automatische Backups von Konfigurationsdateien (ab v1.2.0)
 - Keine Netzwerkkommunikation außer Portage-Repositories
 - Alle emerge-Operationen werden in Echtzeit angezeigt
+- E-Mail-Benachrichtigungen optional (ab v1.2.0)
 
 ### Systemintegrität
 - Das Tool führt nur offizielle emerge-Befehle aus
-- Keine Modifikation von Systemdateien außerhalb des Portage-Systems
+- Keine Modifikation von Systemdateien außerhalb des Portage-Sys
+- Konfigurationsdatei-Support (ab v1.2.0): `/etc/gentoo-updater.conf`
+- Automatische Backups vor Updates (ab v1.2.0)
+- Vollständiges Audit-Logging (ab v1.2.0)tems
 - Alle Aktionen werden angezeigt und können überwacht werden
 - Exit-Codes ermöglichen Fehlerüberwachung
 - Kernel-Updates werden NICHT automatisiert (Sicherheitsfeature)
