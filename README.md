@@ -137,6 +137,89 @@ sudo gentoo-updater --config /path/to/my-config.conf
 gentoo-updater --help
 ```
 
+## 🤖 Automatische Release-Erstellung (für Entwickler)
+
+Das Projekt verwendet ein vollautomatisches Release-System für schnelle und konsistente Versionierung.
+
+### Vollautomatischer Workflow
+
+```bash
+# 1. Normale Änderungen committen
+git add -A
+git commit -m "improve: Better error handling"
+git push
+
+# 2. Release erstellen (vollautomatisch!)
+./scripts/create-release.sh patch --auto
+```
+
+Das war's! Der Befehl macht **automatisch**:
+- ✅ Version erhöhen (patch/minor/major)
+- ✅ Release-Notes aus Git-Commits generieren
+- ✅ CHANGELOG.md aktualisieren
+- ✅ Git-Commit und Tag erstellen
+- ✅ Zu GitHub pushen
+- ✅ GitHub Release mit Assets erstellen
+
+### Release-Typen
+
+```bash
+# Patch Release (1.2.3 → 1.2.4) - Bugfixes
+./scripts/create-release.sh patch --auto
+
+# Minor Release (1.2.3 → 1.3.0) - Neue Features
+./scripts/create-release.sh minor --auto
+
+# Major Release (1.2.3 → 2.0.0) - Breaking Changes
+./scripts/create-release.sh major --auto
+```
+
+### Interaktiver Modus (mit Editor)
+
+Wenn du die Release-Notes manuell bearbeiten möchtest:
+
+```bash
+# Ohne --auto Flag öffnet sich der Editor
+./scripts/create-release.sh patch
+
+# → Editor öffnet sich zum Bearbeiten der Release-Notes
+# → Nach dem Speichern: Skript nochmal ausführen
+./scripts/create-release.sh patch
+```
+
+### Commit-Message Kategorisierung
+
+Das Skript kategorisiert deine Commits automatisch:
+
+- **Features**: `feat:`, `feature:`, `add:`, `✨`, "New Feature"
+- **Bugfixes**: `fix:`, `bug:`, `🐛`
+- **Improvements**: `improve:`, `enhance:`, `update:`, `🔧`, `⚡`
+
+**Beispiele:**
+```bash
+git commit -m "feat: Add automatic backup rotation"
+git commit -m "fix: Resolve dependency calculation bug"
+git commit -m "improve: Better error messages"
+git commit -m "🐛 fix: Handle missing config gracefully"
+```
+
+### GitHub Actions Integration
+
+Nach dem Push wird automatisch:
+- ✓ Python-Syntax validiert
+- ✓ Code-Qualität geprüft
+- ✓ Release auf GitHub erstellt
+- ✓ Assets hochgeladen
+
+**Workflow überwachen:** https://github.com/roimme65/gentoo-updater/actions
+
+### Detaillierte Dokumentation
+
+Mehr Details findest du in:
+- [scripts/README.md](scripts/README.md) - Release-Skript Dokumentation
+- [.github/WORKFLOWS.md](.github/WORKFLOWS.md) - GitHub Actions Details
+- [CHANGELOG.md](CHANGELOG.md) - Vollständige Änderungshistorie
+
 ## Was macht das Skript?
 
 Das Skript führt folgende Schritte automatisch aus:
