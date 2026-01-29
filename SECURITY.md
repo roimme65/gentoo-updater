@@ -61,9 +61,8 @@ Wenn Sie Cronjobs einrichten, werden diese mit Root-Rechten ausgeführt:
 Wenn Sie eine Sicherheitslücke im Gentoo System Updater entdecken, melden Sie diese bitte:
 
 ### Kontakt
-- **E-Mail**: roimme@mailbox.org
 - **GitHub Issues**: https://github.com/roimme65/gentoo-updater/issues (für nicht-kritische Probleme)
-- **GitHub Security Advisories**: Für kritische Sicherheitsprobleme
+- **GitHub Security Advisories**: Für kritische Sicherheitsprobleme (empfohlen)
 
 ### Was Sie erwarten können
 1. **Bestätigung**: Innerhalb von 48 Stunden nach Meldung
