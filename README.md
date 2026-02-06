@@ -1,520 +1,417 @@
 # Gentoo System Updater
 
-Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Prozess vereinfacht und automatisiert.
+**Languages:** 🇬🇧 [English](README.md) | 🇩🇪 [Deutsch](README.de.md)
+
+Automated update solution for Gentoo Linux that simplifies and automates the entire system update process.
 
 ## Features
 
-### 🚀 Performance & Optimierung
-- ⚡ **Parallele Kompilierung** mit automatischer CPU-Erkennung (`--jobs` und `--load-average`)
-- 📊 **Intelligente Update-Erkennung** - Kernel-Module nur bei Bedarf neu bauen
-- 💾 **Speicherplatz-Prüfung** vor Updates
-- 🔄 **Automatisches Retry** bei Manifest-Fehlern
+### 🚀 Performance & Optimization
+- ⚡ **Parallel Compilation** with automatic CPU detection (`--jobs` and `--load-average`)
+- 📊 **Intelligent Update Detection** - Rebuild kernel modules only when needed
+- 💾 **Disk Space Check** before updates
+- 🔄 **Automatic Retry** on manifest errors
 
-### 📦 Update-Funktionen
-- 🔄 **Repository-Synchronisation** (`emerge --sync`)
-- 📚 **eix-Datenbank Update** (optional)
-- 📦 **System-Update** (vollständiges `@world` Update)
-- 🔧 **Intelligente Kernel-Modul-Neucompilierung** (NVIDIA, VirtualBox, etc.)
-- 🧹 **Automatisches Cleanup** (`emerge --depclean`)
-- 🔧 **Dependency-Reparatur** (`revdep-rebuild`)
+### 📦 Update Functions
+- 🔄 **Repository Synchronisation** (`emerge --sync`)
+- 📚 **eix Database Update** (optional)
+- 📦 **System Update** (full `@world` update)
+- 🔧 **Intelligent Kernel Module Recompilation** (NVIDIA, VirtualBox, etc.)
+- 🧹 **Automatic Cleanup** (`emerge --depclean`)
+- 🔧 **Dependency Repair** (`revdep-rebuild`)
 
-### 🛡️ Sicherheit & Zuverlässigkeit
-- 💾 **Automatische Backups** wichtiger Konfigurationsdateien
-- 🔍 **Blockierte Pakete Prüfung** vor Updates
-- ⚠️ **Kritische Paket-Warnung** (gcc, glibc, Python)
-- 📝 **Vollständiges Logging-System** mit JSON-Export
-- 🎯 **Robuste Fehlerbehandlung** mit detaillierten Logs
+### 🛡️ Security & Reliability
+- 💾 **Automatic Backups** of important configuration files
+- 🔍 **Blocked Packages Check** before updates
+- ⚠️ **Critical Package Warning** (gcc, glibc, Python)
+- 📝 **Full Logging System** with JSON export
+- 🎯 **Robust Error Handling** with detailed logs
 
 ### 📊 Monitoring & Reports
-- 📈 **Update-Zusammenfassung** mit Statistiken
-- 🌍 **Mirror-Logging** - Zeigt alle konfigurierten Gentoo Mirrors & primären Mirror
-- 📧 **E-Mail-Benachrichtigungen** (optional)
-- 📁 **Automatische Log-Rotation**
-- 🎨 **Farbige Ausgabe** mit klarer Struktur
+- 📈 **Update Summary** with statistics
+- 🌍 **Mirror Logging** - Shows all configured Gentoo mirrors & primary mirror
+- 📧 **Email Notifications** (optional)
+- 📁 **Automatic Log Rotation**
+- 🎨 **Colored Output** with clear structure
 
-### ⚙️ Konfiguration
-- 📄 **JSON-Konfigurationsdatei** für individuelle Anpassungen
-- 🔧 **Flexible emerge-Optionen**
-- ⚡ **Dry-Run Modus** zum Testen
+### ⚙️ Configuration
+- 📄 **JSON Configuration File** for customization
+- 🔧 **Flexible emerge Options**
+- ⚡ **Dry-Run Mode** for testing
 
-## Voraussetzungen
+### 🆕 v1.4.0 Advanced Parameters
+- 🎛️ **--log-level** (DEBUG/INFO/WARNING/ERROR)
+- ⏭️ **--skip-*** options (sync, update, eix, cleanup, revdep)
+- 🎯 **--only-*** options (execute specific steps only)
+- 📦 **--max-packages N** (limit updates)
+- ⏱️ **--timeout SECONDS** (set emerge timeout)
+- 🔄 **--retry-count N** (automatic retries on failure)
+- 🔔 **--notification-webhook URL** (send notifications)
+- ⚙️ **--parallel-jobs N** (override job count)
+- 🌍 **Environment Variables** (GENTOO_UPDATER_*)
+
+## Requirements
 
 - Gentoo Linux
 - Python 3.6+
-- Root/sudo-Rechte
-- Optional: `eix` für schnellere Paket-Suche
-- Optional: `gentoolkit` für `revdep-rebuild`
+- Root/sudo privileges
+- Optional: `eix` for faster package searches
+- Optional: `gentoolkit` for `revdep-rebuild`
 
 ## Installation
 
-### Methode 1: Automatische Installation
+### Method 1: Automatic Installation
 
 ```bash
-git clone https://github.com/yourusername/gentoo-updater.git
+git clone https://github.com/roimme65/gentoo-updater.git
 cd gentoo-updater
 sudo ./install.sh
 ```
 
-### Methode 2: Manuelle Installation
+### Method 2: Manual Installation
 
 ```bash
-# Skript herunterladen
-git clone https://github.com/yourusername/gentoo-updater.git
+# Download script
+git clone https://github.com/roimme65/gentoo-updater.git
 cd gentoo-updater
 
-# Ausführbar machen
+# Make executable
 chmod +x gentoo-updater.py
 
-# Nach /usr/local/bin kopieren (optional)
+# Copy to /usr/local/bin (optional)
 sudo cp gentoo-updater.py /usr/local/bin/gentoo-updater
 ```
 
-## Verwendung
+### Method 3: PyPI (Coming in v1.4.0+)
 
-### Vollständiges System-Update
+```bash
+pip install gentoo-updater
+```
+
+## Usage
+
+### Full System Update
 
 ```bash
 sudo gentoo-updater
 ```
 
-### Konfiguration erstellen
+### Create Configuration
 
-Beim ersten Mal Default-Konfiguration erstellen:
+On first run, create default configuration:
 
 ```bash
 sudo gentoo-updater --create-config
 ```
 
-Dies erstellt `/etc/gentoo-updater.conf` mit folgenden Optionen:
-- **emerge_jobs**: Anzahl paralleler Jobs (auto = CPU-Kerne)
-- **emerge_load_average**: Maximale System-Last
-- **enable_backups**: Automatische Backups aktivieren
-- **backup_dir**: Verzeichnis für Backups
-- **enable_notifications**: E-Mail-Benachrichtigungen
-- **notification_email**: E-Mail-Adresse
-- **min_free_space_gb**: Mindest-Speicherplatz
-- **auto_depclean**: Automatisches depclean
-- **auto_revdep_rebuild**: Automatisches revdep-rebuild
-- **critical_packages**: Liste kritischer Pakete
-- **log_retention_days**: Log-Aufbewahrung in Tagen
+This creates `/etc/gentoo-updater.conf` with options:
+- **emerge_jobs**: Number of parallel jobs (auto = CPU cores)
+- **emerge_load_average**: Maximum system load
+- **enable_backups**: Enable automatic backups
+- **backup_dir**: Backup directory
+- **enable_notifications**: Enable email notifications
+- **notification_email**: Email address
+- **min_free_space_gb**: Minimum free space required
+- **auto_depclean**: Enable automatic depclean
+- **auto_revdep_rebuild**: Enable automatic revdep-rebuild
+- **critical_packages**: List of critical packages
+- **log_retention_days**: Log retention in days
 
-Beispiel-Config: siehe [gentoo-updater.conf.example](gentoo-updater.conf.example)
+Example config: see [gentoo-updater.conf.example](gentoo-updater.conf.example)
 
-### Dry-Run (zeigt was gemacht würde)
+### Dry-Run Mode
 
 ```bash
 sudo gentoo-updater --dry-run
 ```
 
-### Ausführliche Ausgabe
+### Verbose Output
 
 ```bash
 sudo gentoo-updater --verbose
 ```
 
-### Kernel-Module neu kompilieren
+### Advanced Parameters (v1.4.0+)
 
-Nützlich nach einem manuellen Kernel-Update oder wenn Module fehlen:
+```bash
+# Log level control
+sudo gentoo-updater --log-level DEBUG
+
+# Skip specific steps
+sudo gentoo-updater --skip-cleanup --skip-revdep
+
+# Execute only specific steps
+sudo gentoo-updater --only-sync      # Only repository sync
+sudo gentoo-updater --only-update    # Only system update
+
+# Limit packages
+sudo gentoo-updater --max-packages 50
+
+# Set timeout
+sudo gentoo-updater --timeout 3600
+
+# Retry on failure
+sudo gentoo-updater --retry-count 3
+
+# Override parallel jobs
+sudo gentoo-updater --parallel-jobs 8
+
+# Send webhook notification
+sudo gentoo-updater --notification-webhook "https://example.com/webhook"
+```
+
+### Environment Variables (v1.4.0+)
+
+```bash
+# Enable dry-run via environment variable
+GENTOO_UPDATER_DRY_RUN=true sudo gentoo-updater
+
+# Debug logging
+GENTOO_UPDATER_LOG_LEVEL=DEBUG sudo gentoo-updater
+
+# Set timeout
+GENTOO_UPDATER_TIMEOUT=3600 sudo gentoo-updater
+
+# Enable retry
+GENTOO_UPDATER_RETRY_COUNT=3 sudo gentoo-updater
+
+# Override parallel jobs
+GENTOO_UPDATER_PARALLEL_JOBS=4 sudo gentoo-updater
+```
+
+### Kernel Module Recompilation
+
+Recompile kernel modules (useful after manual kernel update):
 
 ```bash
 sudo gentoo-updater --rebuild-modules
 ```
 
-Dies baut alle externen Kernel-Module neu:
-- NVIDIA-Treiber (`nvidia-drivers`)
-- VirtualBox-Module (`virtualbox-modules`)
-- ZFS-Module
-- Weitere externe Module
+This rebuilds external kernel modules:
+- NVIDIA drivers (`nvidia-drivers`)
+- VirtualBox modules (`virtualbox-modules`)
+- ZFS modules
+- Other external modules
 
-### Eigene Konfigurationsdatei verwenden
+### Custom Configuration File
 
 ```bash
 sudo gentoo-updater --config /path/to/my-config.conf
 ```
 
-### Hilfe anzeigen
+### Show Help
 
 ```bash
 gentoo-updater --help
 ```
 
-## 🤖 Automatische Release-Erstellung (für Entwickler)
+## What the Script Does
 
-Das Projekt verwendet ein vollautomatisches Release-System für schnelle und konsistente Versionierung.
+The script automatically executes these steps:
 
-### Vollautomatischer Workflow
+1. **Repository Synchronisation**
+   - Reads GENTOO_MIRRORS from `/etc/portage/make.conf`
+   - Displays all configured mirrors
+   - Runs `emerge --sync` to update the Portage tree
 
-```bash
-# 1. Normale Änderungen committen
-git add -A
-git commit -m "improve: Better error handling"
-git push
+2. **eix Database Update**
+   - Runs `eix-update` to update eix database (if installed)
 
-# 2. Release erstellen (vollautomatisch!)
-./scripts/create-release.sh patch --auto
-```
+3. **Update Check**
+   - Checks for available updates
+   - Shows list of packages to update
 
-Das war's! Der Befehl macht **automatisch**:
-- ✅ Version erhöhen (patch/minor/major)
-- ✅ Release-Notes aus Git-Commits generieren
-- ✅ CHANGELOG.md aktualisieren
-- ✅ Git-Commit und Tag erstellen
-- ✅ Zu GitHub pushen
-- ✅ GitHub Release mit Assets erstellen
+4. **System Update**
+   - Runs `emerge @world --update --deep --newuse`
+   - Monitors for critical package updates
+   - Only rebuilds kernel modules if kernel was updated
 
-### Release-Typen
+5. **Cleanup**
+   - Runs `emerge --depclean` to remove unused packages
 
-```bash
-# Patch Release (1.2.3 → 1.2.4) - Bugfixes
-./scripts/create-release.sh patch --auto
+6. **Dependency Repair**
+   - Runs `revdep-rebuild` to fix broken dependencies (if gentoolkit installed)
 
-# Minor Release (1.2.3 → 1.3.0) - Neue Features
-./scripts/create-release.sh minor --auto
+7. **Kernel Check**
+   - Shows available kernel versions
+   - Provides hints for manual kernel updates
 
-# Major Release (1.2.3 → 2.0.0) - Breaking Changes
-./scripts/create-release.sh major --auto
-```
+8. **Configuration Check**
+   - Searches for ._cfg files
+   - Alerts about pending configuration updates
 
-### Interaktiver Modus (mit Editor)
-
-Wenn du die Release-Notes manuell bearbeiten möchtest:
-
-```bash
-# Ohne --auto Flag öffnet sich der Editor
-./scripts/create-release.sh patch
-
-# → Editor öffnet sich zum Bearbeiten der Release-Notes
-# → Nach dem Speichern: Skript nochmal ausführen
-./scripts/create-release.sh patch
-```
-
-### Commit-Message Kategorisierung
-
-Das Skript kategorisiert deine Commits automatisch:
-
-- **Features**: `feat:`, `feature:`, `add:`, `✨`, "New Feature"
-- **Bugfixes**: `fix:`, `bug:`, `🐛`
-- **Improvements**: `improve:`, `enhance:`, `update:`, `🔧`, `⚡`
-
-**Beispiele:**
-```bash
-git commit -m "feat: Add automatic backup rotation"
-git commit -m "fix: Resolve dependency calculation bug"
-git commit -m "improve: Better error messages"
-git commit -m "🐛 fix: Handle missing config gracefully"
-```
-
-### GitHub Actions Integration
-
-Nach dem Push wird automatisch:
-- ✓ Python-Syntax validiert
-- ✓ Code-Qualität geprüft
-- ✓ Release auf GitHub erstellt
-- ✓ Assets hochgeladen
-
-**Workflow überwachen:** https://github.com/roimme65/gentoo-updater/actions
-
-### Detaillierte Dokumentation
-
-Mehr Details findest du in:
-- [scripts/README.md](scripts/README.md) - Release-Skript Dokumentation
-- [.github/WORKFLOWS.md](.github/WORKFLOWS.md) - GitHub Actions Details
-- [CHANGELOG.md](CHANGELOG.md) - Vollständige Änderungshistorie
-
-## Was macht das Skript?
-
-Das Skript führt folgende Schritte automatisch aus:
-
-1. **Repository-Synchronisation**
-   - Zeigt alle konfigurierten Gentoo Mirrors aus `/etc/portage/make.conf`
-   - Loggt primären Mirror in die Log-Datei
-   - `emerge --sync` zum Aktualisieren des Portage-Trees
-
-2. **eix-Update**
-   - `eix-update` zur Aktualisierung der eix-Datenbank (falls installiert)
-
-3. **Update-Prüfung**
-   - Prüft ob Updates verfügbar sind
-   - Zeigt eine Liste aller zu aktualisierenden Pakete
-create-config] 
-                      [--config CONFIG] [--version]
-
-Gentoo System Updater - Automatisiert System-Updates
-
-optional arguments:
-  -h, --help            Zeige diese Hilfe
-  -v, --verbose         Ausführliche Ausgabe
-  -n, --dry-run         Zeige nur was gemacht würde, ohne es auszuführen
-  --rebuild-modules     Erzwingt Neucompilierung der Kernel-Module (ohne System-Update)
-  --create-config       Erstellt Default-Konfigurationsdatei
-  --config CONFIG       Pfad zur Konfigurationsdatei (Standard: /etc/gentoo-updater.conf)
-  --version             Zeige Version (aktuell: v1.2.0ect kernel show)
-   - **Wird NICHT ausgeführt** wenn Kernel schon aktuell ist!
-
-6. **Cleanup**
-   - `emerge --depclean` entfernt nicht mehr benötigte Pakete
-
-7. **Dependency-Reparatur**
-   - `revdep-rebuild` repariert kaputte Abhängigkeiten (falls gentoolkit installiert)
-
-8. **Kernel-Prüfung**
-   - Zeigt verfügbare Kernel-Versionen an
-   - Gibt Hinweise für manuelle Kernel-Updates
-
-9. **Konfigurations-Prüfung**
-   - Sucht nach ._cfg Dateien
-   - Weist auf notwendige Konfigurations-Updates hin
-
-## Optionen
-
-```
-usage: gentoo-updater [-h] [-v] [-n] [--rebuild-modules] [--version]
-
-Gentoo System Updater - Automatisiert System-Updates
-
-optional arguments:
-  -h, --help          Zeige diese Hilfe
-  -v, --verbose       Ausführliche Ausgabe
-  -n, --dry-run       Zeige nur was gemacht würde, ohne es auszuführen
-  --rebuild-modules   Erzwingt Neucompilierung der Kernel-Module (ohne System-Update)
-  --version           Zeige Version (aktuell: v1.1.2)
-```
-
-## Sicherheit
-
-- Das Skript benötigt Root-Rechte (sudo)
-- Es prüft automatisch ob es mit entsprechenden Rechten läuft
-- Dry-Run Modus ermöglicht sicheres Testen
-- Fehler führen zu kontrolliertem Abbruch
-
-## Empfehlungen
-
-### Vor dem ersten Update
-
-```bash
-# eix installieren (empfohlen für schnellere Suche)
-sudo emerge --ask app-portage/eix
-
-# gentoolkit installieren (für revdep-rebuild)
-sudo emerge --ask app-portage/gentoolkit
-```
-
-### Regelmäßige Updates
-
-```bash
-# Tägliches Update via cron (z.B. nachts)
-# /etc/cron.daily/gentoo-updater
-#!/bin/bash
-/usr/local/bin/gentoo-updater >> /var/log/gentoo-updater.log 2>&1
-```
-
-### Nach dem Update
-
-- **Kernel-Updates** müssen manuell kompiliert werden:
-  ```bash
-  eselect kernel set <nummer>
-  cd /usr/src/linux
-  make oldconfig && make && make modules_install && make install
-  grub-mkconfig -o /boot/grub/grub.cfg
-  ```
-  **Aber:** Module werden automatisch neu gebaut!
-  
-- **Konfigurations-Änderungen** mit `dispatch-conf` oder `etc-update` prüfen
-- Bei Kernel- oder wichtigen Updates: **System neu starten**
-- Nach Neustart mit neuem Kernel laufen die neu kompilierten Module automatisch
-
-## Fehlerbehebung
-
-### "Dieses Skript benötigt Root-Rechte"
-
-```bash
-sudo gentoo-updater
-``` & Backups
+## Logs & Backups
 
 ### Logs
-Das Skript erstellt automatisch detaillierte Logs:
-- Log-Datei: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.log`
-- JSON-Summary: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.json`
-- Echtzeit-Ausgabe im Terminal
-- Automatische Log-Rotation (Standard: 30 Tage)
+The script automatically creates detailed logs:
+- Log file: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.log`
+- JSON summary: `/var/log/gentoo-updater/update-YYYYMMDD-HHMMSS.json`
+- Real-time output to terminal
+- Automatic log rotation (default: 30 days)
 
 ### Backups
-Vor jedem Update werden automatisch gesichert:
+Before each update, these files are backed up:
 - `/etc/portage/make.conf`
 - `/etc/portage/package.use`
 - `/etc/portage/package.accept_keywords`
 - `/var/lib/portage/world`
 
-Backup-Speicherort: `/var/backups/gentoo-updater/YYYYMMDD-HHMMSS/`
+Backup directory: `/var/backups/gentoo-updater/YYYYMMDD-HHMMSS/`
 
-### Update-Summary
-Nach jedem Update:
-- 🌍 Alle konfigurierten Gentoo Mirrors
-- 🌍 Primärer Mirror (der erste verfügbare)
-- Anzahl aktualisierter Pakete
-- Anzahl entfernter Pakete
-- Kernel-Update Status
-- Modul-Rebuild Status
-- Fehler und Warnungen
-- Gesamt-Dauerisch durch:
-1. Löschen des Quarantine-Verzeichnisses
-2. Automatischer Retry des Syncs
+### Update Summary
+After each update:
+- 🌍 All configured Gentoo mirrors
+- 🌍 Primary mirror (first available)
+- Number of updated packages
+- Number of removed packages
+- Kernel update status
+- Module rebuild status
+- Errors and warnings
+- Total duration
 
-Falls es dennoch fehlschlägt:
+## Troubleshooting
+
+### "Script requires root privileges"
+
+```bash
+sudo gentoo-updater
+```
+
+### Manifest quarantine errors
+
+The script automatically handles manifest errors by:
+1. Deleting the quarantine directory
+2. Automatic retry of sync
+
+If problems persist:
+
 ```bash
 sudo rm -rf /var/db/repos/gentoo/.tmp-unverified-download-quarantine
 sudo emerge --sync
 ```
 
-### Kernel-Module fehlen nach Kernel-Update
+### Missing kernel modules after kernel update
 
 ```bash
 sudo gentoo-updater --rebuild-modules
 ```
 
-### eix nicht gefunden
+### eix not found
 
 ```bash
 sudo emerge --ask app-portage/eix
 ```
 
-### revdep-rebuild nicht gefunden
+### revdep-rebuild not found
 
 ```bash
 sudo emerge --ask app-portage/gentoolkit
 ```
 
-## Logs
+## FAQ
 
-Das Skript erstellt automatisch Logs:
-- Zeitstempel: `/var/log/gentoo-updater-YYYYMMDD-HHMMSS.log`
-- Echtzeit-Ausgabe im Terminal
+**Q: Why are kernel modules not rebuilt?**
 
-## Unterschiede zu anderen Distributionen
+A: This is normal and correct! Modules are rebuilt only when:
+- ✅ A kernel update occurred during system update, OR
+- ✅ Running kernel ≠ Installed kernel (after manual kernel compilation)
 
-Gentoo erfordert mehr manuelle Schritte als andere Distributionen:
-- **Kernel-Kompilierung** ist manuell (nicht automatisiert)
-  - ✅ Aber: Kernel-Module werden automatisch neu gebaut!
-- **Konfigurations-Updates** erfordern `dispatch-conf` oder `etc-update`
-- **Kompilierung** kann lange dauern (abhängig von Hardware und USE-Flags)
-- **USE-Flag-Änderungen** können Neukompilierung erfordern
+Modules are NOT rebuilt when:
+- ❌ Kernel is already compiled for current version
 
-## Häufige Anwendungsfälle
+Why? To make updates faster! (5-10 minutes faster)
 
-### Komplettes Wochenend-Update
-```bash
-sudo gentoo-updater
-# Warten bis fertig...
-# Kernel-Updates und Configs prüfen
-# System neu starten
-```
+**Q: How do I force module rebuild?**
 
-### Schnelles Modul-Rebuild nach Kernel-Update
-```bash
-# Nach manuellem Kernel-Build:
-sudo gentoo-updater --rebuild-modules
-sudo reboot
-```
-2.0 (2025-01-27) - 🚀 Große Optimierung
-- ⚡ **Performance-Optimierung**: Parallele Kompilierung mit `--jobs` und `--load-average`
-- 📄 **Konfigurationssystem**: JSON-basierte Konfigurationsdatei
-- 💾 **Automatische Backups**: Wichtige Konfigurationsdateien werden gesichert
-- 📝 **Vollständiges Logging**: Detaillierte Logs mit JSON-Export
-- 📊 **Update-Zusammenfassung**: Statistiken und Reports nach Updates
-- 🔍 **Intelligente Prüfungen**: 
-  - Speicherplatz-Check vor Updates
-  - Blockierte Pakete Erkennung
-  - Kritische Paket-Warnungen (gcc, glibc, Python)
-- 📧 **E-Mail-Benachrichtigungen**: Optional nach Update-Abschluss
-- 🛡️ **Verbesserte Fehlerbehandlung**: Exception-Logging, finally-Blöcke
-- 🔧 **Neue Optionen**: `--create-config`, `--config`
-- 📁 **Log-Rotation**: Automatische Bereinigung alter Logs/Backups
-
-### v1.
-### Testen ohne Änderungen
-```bash
-sudo gentoo-updater --dry-run
-```
-
-## ❓ FAQ
-
-### F: Warum werden meine Kernel-Module nicht neu gebaut?
-**A:** Das ist normal und richtig! Module werden **nur** neu gebaut wenn:
-- ✅ Ein Kernel-Update während des System-Updates stattfand, ODER
-- ✅ Laufender Kernel ≠ Installierter Kernel (nach manueller Kernel-Kompilierung)
-
-Module werden **NICHT** neu gebaut wenn:
-- ❌ Der Kernel schon für die aktuelle Version kompiliert ist
-
-**Warum?** Damit das Update schneller geht! (5-10 Minuten schneller)
-
-### F: Wie erzwinge ich ein Module-Rebuild?
-**A:** Nutze die `--rebuild-modules` Option:
+A: Use `--rebuild-modules` option:
 ```bash
 sudo gentoo-updater --rebuild-modules
 ```
 
-### F: Wie schnell ist das Update?
-**A:** Das hängt vom Update-Umfang ab:
-- **Ohne Kernel-Update**: 5-10 Minuten (Module NICHT neu kompiliert)
-- **Mit Kernel-Update**: 15-25 Minuten (NVIDIA/VirtualBox Module werden neu kompiliert)
+**Q: How long does an update take?**
 
-### F: Was ist wenn ich den Kernel manuell aktualisiere?
-**A:** Nach manuellem Kernel-Build:
+A: Depends on update scope:
+- **Without kernel update**: 5-10 minutes (modules NOT recompiled)
+- **With kernel update**: 15-25 minutes (NVIDIA/VirtualBox modules recompiled)
+
+**Q: What if I manually update the kernel?**
+
+A: After manual kernel build:
 ```bash
-eselect kernel set <nummer>
+eselect kernel set <number>
 cd /usr/src/linux
 make oldconfig && make && make modules_install && make install
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# Dann:
+# Then:
 sudo gentoo-updater --rebuild-modules
 ```
 
-Das Skript erkennt den Kernel-Mismatch automatisch und baut die Module neu.
+The script automatically detects kernel mismatch and rebuilds modules.
 
-## Lizenz
+## Differences from Other Distributions
 
-MIT License - Siehe LICENSE Datei
+Gentoo requires more manual steps than other distributions:
+- **Kernel Compilation** is manual (not automated)
+  - ✅ But: Kernel modules are automatically rebuilt!
+- **Configuration Updates** require `dispatch-conf` or `etc-update`
+- **Compilation** can take a long time (depends on hardware and USE flags)
+- **USE flag changes** may require recompilation
 
-## Beiträge
+## Common Use Cases
 
-Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Issue.
+### Complete Weekend Update
+```bash
+sudo gentoo-updater
+# Wait for completion...
+# Check kernel updates and configs
+# Reboot system
+```
+
+### Quick Module Rebuild After Manual Kernel Update
+```bash
+# After manual kernel build:
+sudo gentoo-updater --rebuild-modules
+sudo reboot
+```
+
+### Testing Without Changes
+```bash
+sudo gentoo-updater --dry-run
+```
+
+## License
+
+MIT License - See LICENSE file
+
+## Contributing
+
+Contributions are welcome! Please create a pull request or open an issue.
 
 ## Changelog
 
-### v1.3.3 (2026-02-06) - 🌍 Mirror-Logging
-- 🌍 **Neue Funktion:** Mirror-Logging
-  - Alle Gentoo Mirrors aus `/etc/portage/make.conf` werden angezeigt
-  - Primärer Mirror wird im Log festgehalten
-  - Mirrors erscheinen in Konsolen-Ausgabe und JSON-Summary
-- 📊 Erweiterte Statistics mit Mirror-Informationen
-- 📝 Besseres Logging beim Repository-Sync
+### v1.4.0 (2026-02-06) - 🆕 Advanced Parameters
+- 🎛️ **New Parameters:** --log-level, --skip-*, --only-*, --max-packages, --timeout, --retry-count, --notification-webhook, --parallel-jobs
+- 🌍 **Environment Variables:** Full environment variable support (GENTOO_UPDATER_*)
+- 📝 **Documentation:** Updated help with examples and environment variable docs
+- ✨ **v1.4.0 Ready for PyPI:** All parameters fully implemented
 
-### v1.1.2 (2025-01-10) - 🔧 Bug Fix
-- 🐛 **KRITISCH FIX:** Kernel-Module wurden bei jedem Update neu gebaut
-  - Lösung: Nur bei echtem Kernel-Mismatch neu bauen
-  - Effekt: 5-10 Minuten schneller bei Updates ohne Kernel-Change
-- 🔧 Optimierte Kernel-Versions-Prüfung mit besserer String-Verarbeitung
-- 📚 Dokumentation erweitert mit FAQ-Sektion
+### v1.3.3 (2026-02-06) - 🌍 Mirror Logging
+- 🌍 **New Feature:** Mirror Logging
+  - Reads GENTOO_MIRRORS from `/etc/portage/make.conf`
+  - Displays all configured mirrors during repository sync
+  - Logs primary mirror to log file and JSON summary
+- 📊 Enhanced statistics with mirror information
+- 📝 Improved logging during repository sync
 
-### v1.1.0 (2025-01-10)
-- ✨ Automatische Kernel-Modul-Neucompilierung
-- ✨ Neue Option: `--rebuild-modules`
-- 🛡️ Automatisches Manifest-Quarantine-Cleanup
-- 🔄 Retry-Mechanismus bei Sync-Fehlern
-- 📊 Intelligente Erkennung von Kernel-Updates
+## Author
 
-### v1.0.0 (2025-01-01)
-- 🎉 Initiales Release
-- Basis Update-Funktionalität
+Created for Gentoo Linux users
 
-## Autor
-
-Erstellt für Gentoo Linux Benutzer
-
-## Siehe auch
+## See Also
 
 - [Gentoo Wiki - Updating Gentoo](https://wiki.gentoo.org/wiki/Handbook:AMD64/Working/Portage#Updating_Gentoo)
 - [Gentoo Wiki - eix](https://wiki.gentoo.org/wiki/Eix)
 - [Gentoo Wiki - gentoolkit](https://wiki.gentoo.org/wiki/Gentoolkit)
+- [GitHub Repository](https://github.com/roimme65/gentoo-updater)
+- [Release Notes](https://github.com/roimme65/gentoo-updater/releases)
