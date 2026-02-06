@@ -1,91 +1,97 @@
 # Security Policy
 
+**Languages:** 🇬🇧 [English](SECURITY.md) | 🇩🇪 [Deutsch](SECURITY.de.md)
+
 ## Supported Versions
 
-Die folgenden Versionen des Gentoo System Updaters werden mit Sicherheitsupdates unterstützt:
+The following versions of the Gentoo System Updater receive security updates:
 
-| Version | Unterstützt        | Status |
+| Version | Supported          | Status |
 | ------- | ------------------ | ------ |
-| 1.2.x   | :white_check_mark: | Aktuelle stabile Version |
-| 1.1.x   | :white_check_mark: | Unterstützt bis 30.06.2026 |
-| 1.0.x   | :x:                | Nicht mehr unterstützt |
-| < 1.0   | :x:                | Entwicklungsversionen |
+| 1.4.x   | :white_check_mark: | Current stable version |
+| 1.3.x   | :white_check_mark: | Supported until 30.06.2026 |
+| 1.2.x   | :white_check_mark: | Supported until 31.03.2026 |
+| 1.1.x   | :x:                | End of life |
+| < 1.1   | :x:                | Development versions |
 
-## Sicherheitsüberlegungen
+## Security Considerations
 
-### Root-Rechte
-Der Gentoo Updater benötigt Root-Rechte (sudo) für System-Updates. Dies ist erforderlich, da `emerge` Systemänderungen vornimmt.
+### Root Privileges
+The Gentoo Updater requires root privileges (sudo) for system updates. This is necessary because `emerge` performs system-level changes.
 
-**Empfohlene Sicherheitsmaßnahmen:**
-- Überprüfen Sie den Code vor der Ausführung
-- Verwenden Sie den `--dry-run` Modus zum Testen
-- Prüfen Sie die Log-Dateien regelmäßig
-- Verwenden Sie die neueste Version
+**Recommended Security Measures:**
+- Review the code before execution
+- Use the `--dry-run` mode for testing
+- Regularly review log files
+- Always use the latest version
 
-### Cronjobs
-Wenn Sie Cronjobs einrichten, werden diese mit Root-Rechten ausgeführt:
-- Stellen Sie sicher, dass nur autorisierte Benutzer Cronjobs ändern können
-- Logs werden nach `/var/log/` geschrieben
-- Überprüfen Sie regelmäßig die ausgeführten Updates
-- Kernel-Updates müssen manuell durchgeführt werden
-- Konfigurations-Updates erfordern manuelle Zusammenführung
+### Cron Jobs
+When setting up cron jobs, they execute with root privileges:
+- Ensure only authorized users can modify cron jobs
+- Logs are written to `/var/log/`
+- Regularly review executed updates
+- Kernel updates must be performed manually
+- Configuration updates require manual merging
 
-### Datenverarbeitung
-- Das Tool speichert keine sensiblen Daten
-- Log-Dateien enthalten Paketinformationen und Systemausgaben (ab v1.2.0)
-- JSON-Export von Update-Statistiken (ab v1.2.0, keine sensiblen Daten)
-- Automatische Backups von Konfigurationsdateien (ab v1.2.0)
-- Keine Netzwerkkommunikation außer Portage-Repositories
-- Alle emerge-Operationen werden in Echtzeit angezeigt
-- E-Mail-Benachrichtigungen optional (ab v1.2.0)
+### Data Processing
+- The tool stores no sensitive data
+- Log files contain package information and system output (from v1.2.0)
+- JSON export of update statistics (from v1.2.0, no sensitive data)
+- Automatic backups of configuration files (from v1.2.0)
+- No network communication except to Portage repositories
+- All emerge operations are displayed in real-time
+- Email notifications optional (from v1.2.0)
+- Advanced parameters and dry-run testing (from v1.4.0)
 
-### Systemintegrität
-- Das Tool führt nur offizielle emerge-Befehle aus
-- Keine Modifikation von Systemdateien außerhalb des Portage-Sys
-- Konfigurationsdatei-Support (ab v1.2.0): `/etc/gentoo-updater.conf`
-- Automatische Backups vor Updates (ab v1.2.0)
-- Vollständiges Audit-Logging (ab v1.2.0)tems
-- Alle Aktionen werden angezeigt und können überwacht werden
-- Exit-Codes ermöglichen Fehlerüberwachung
-- Kernel-Updates werden NICHT automatisiert (Sicherheitsfeature)
+### System Integrity
+- The tool only executes official emerge commands
+- No modification of system files outside Portage control
+- Configuration file support (from v1.2.0): `/etc/gentoo-updater.conf`
+- Automatic backups before updates (from v1.2.0)
+- Complete audit logging (from v1.2.0)
+- All actions are displayed and can be monitored
+- Exit codes enable error monitoring
+- Kernel updates are NOT automated (security feature)
+- Environment variable validation (from v1.4.0)
 
-### Gentoo-spezifische Sicherheit
-- **Kernel-Updates**: Werden nur geprüft, niemals automatisch durchgeführt
-- **Konfigurations-Updates**: Werden erkannt, aber nicht automatisch angewendet
-- **USE-Flag-Änderungen**: Können Neukompilierung auslösen
-- **depclean**: Kann in seltenen Fällen wichtige Pakete markieren
-- **revdep-rebuild**: Repariert nur kaputte Abhängigkeiten
+### Gentoo-Specific Security
+- **Kernel Updates**: Only detected, never automatically performed
+- **Configuration Updates**: Detected but not automatically applied
+- **USE Flag Changes**: Can trigger recompilation
+- **depclean**: May rarely mark important packages for removal
+- **revdep-rebuild**: Only repairs broken dependencies
+- **Mirror Logging**: Displays all configured Gentoo mirrors (from v1.3.0)
 
 ## Reporting a Vulnerability
 
-Wenn Sie eine Sicherheitslücke im Gentoo System Updater entdecken, melden Sie diese bitte:
+If you discover a security vulnerability in the Gentoo System Updater, please report it:
 
-### Kontakt
-- **GitHub Issues**: https://github.com/roimme65/gentoo-updater/issues (für nicht-kritische Probleme)
-- **GitHub Security Advisories**: Für kritische Sicherheitsprobleme (empfohlen)
+### Contact
+- **GitHub Security Advisories**: For critical security issues (recommended)
+- **GitHub Issues**: For non-critical issues only
 
-### Was Sie erwarten können
-1. **Bestätigung**: Innerhalb von 48 Stunden nach Meldung
-2. **Bewertung**: Analyse der Schwere und Auswirkung innerhalb von 5 Werktagen
-3. **Updates**: Regelmäßige Statusupdates während der Bearbeitung
+### What to Expect
+1. **Acknowledgment**: Within 48 hours of reporting
+2. **Assessment**: Severity and impact analysis within 5 business days
+3. **Updates**: Regular status updates during remediation
 4. **Fix**: 
-   - Kritische Probleme: Patch innerhalb von 7 Tagen
-   - Moderate Probleme: Patch im nächsten Release
-   - Geringe Probleme: Wird dokumentiert und geplant
+   - Critical issues: Patch within 7 days
+   - Moderate issues: Patch in next release
+   - Low severity: Documented and scheduled
 
-### Informationen für Ihre Meldung
-Bitte fügen Sie hinzu:
-- Beschreibung der Sicherheitslücke
-- Schritte zur Reproduktion
-- Betroffene Versionen
-- Mögliche Auswirkungen
-- Vorgeschlagene Lösung (falls vorhanden)
-- Gentoo-spezifische Informationen (Profile, USE-Flags, etc.)
+### Information for Your Report
+Please include:
+- Description of the vulnerability
+- Steps to reproduce
+- Affected versions
+- Potential impact
+- Suggested solution (if available)
+- Gentoo-specific information (profile, USE flags, etc.)
 
-### Verantwortungsvolle Offenlegung
-Wir bitten um:
-- Keine öffentliche Bekanntgabe vor einem Fix
-- Zeit für Entwicklung und Testing eines Patches
-- Koordinierte Veröffentlichung von Sicherheitsinformationen
+### Responsible Disclosure
+We ask for:
+- No public disclosure before a fix is available
+- Time for patch development and testing
+- Coordinated publication of security information
 
-Vielen Dank für Ihre Unterstützung bei der Sicherheit dieses Projekts!
+Thank you for supporting the security of this project!

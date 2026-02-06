@@ -1,0 +1,76 @@
+name: Feature Request
+description: Suggest an idea for this project
+title: "[FEATURE] "
+labels: ["enhancement", "feature-request"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide details below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: Clear description of the feature you'd like to see
+      placeholder: "Example: Add support for automatic package downgrading"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case
+      description: Explain why this feature would be useful
+      placeholder: "Example: Some packages break updates, but downgrading them would help..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution (Optional)
+      description: If you have an idea on how to implement this, share it
+      placeholder: "Example: Add a `--allow-downgrade` option..."
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What aspect of gentoo-updater does this relate to?
+      options:
+        - Update Functionality
+        - Configuration
+        - Logging / Reporting
+        - Performance
+        - Security
+        - Documentation
+        - Installation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: alternatives
+    attributes:
+      label: Have you considered...
+      options:
+        - label: Are there alternative solutions you've tried?
+          required: false
+        - label: Is this related to an existing issue?
+          required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information or examples
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Notes
+        - Features should align with gentoo-updater's core purpose
+        - Breaking changes will be considered for major versions only
+        - Security considerations are taken seriously

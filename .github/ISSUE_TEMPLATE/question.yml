@@ -1,0 +1,63 @@
+name: Question / Support
+description: Ask a question or seek help
+title: "[QUESTION] "
+labels: ["question", "documentation"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're happy to help! Please check the documentation first.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: "Example: How can I configure email notifications?"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      description: What is your question about?
+      options:
+        - Installation
+        - Configuration
+        - Usage / Running Updates
+        - Logging / Reporting
+        - Troubleshooting
+        - Performance
+        - Compatibility
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What Have You Tried?
+      description: What solutions or documentation have you already checked?
+      placeholder: |
+        - Checked README.md
+        - Ran with --help
+        - Checked the CHANGELOG
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any relevant system information or error messages
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Resources
+        - 📖 [Documentation](https://github.com/roimme65/gentoo-updater#readme)
+        - 🇩🇪 [Deutsch Dokumentation](https://github.com/roimme65/gentoo-updater/blob/main/README.de.md)
+        - 🔍 [FAQ Section](https://github.com/roimme65/gentoo-updater#faq)
+        - 🐛 [Known Issues](https://github.com/roimme65/gentoo-updater/issues)
