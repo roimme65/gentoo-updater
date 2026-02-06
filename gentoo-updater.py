@@ -119,7 +119,9 @@ class GentooUpdater:
             'kernel_updated': False,
             'modules_rebuilt': False,
             'errors': [],
-            'warnings': []
+            'warnings': [],
+            'gentoo_mirrors': [],
+            'used_mirror': None
         }
     
     def setup_logging(self):
@@ -288,6 +290,63 @@ class GentooUpdater:
                 self.print_success("Quarantine-Verzeichnis gelöscht")
             except Exception as e:
                 self.print_warning(f"Konnte Quarantine nicht löschen: {str(e)}")
+    
+    def get_gentoo_mirrors(self) -> List[str]:
+        """Liest die GENTOO_MIRRORS aus /etc/portage/make.conf
+        
+        Returns:
+            Liste der konfigurierten Mirrors
+        """
+        mirrors = []
+        make_conf_path = '/etc/portage/make.conf'
+        
+        if not os.path.exists(make_conf_path):
+            self.print_warning(f"make.conf nicht gefunden: {make_conf_path}")
+            return mirrors
+        
+        try:
+            with open(make_conf_path, 'r') as f:
+                content = f.read()
+            
+            # Suche nach GENTOO_MIRRORS Variable
+            # Berücksichtigt mehrzeilige Definitionen mit Backslash
+            import re
+            pattern = r'GENTOO_MIRRORS\s*=\s*"([^"]+)"'
+            match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+            
+            if match:
+                mirrors_str = match.group(1)
+                # Entferne Backslashes und extra Whitespace
+                mirrors_str = mirrors_str.replace('\\', ' ').replace('\n', ' ')
+                # Teile nach Whitespace und filtere leere Strings
+                mirrors = [m.strip() for m in mirrors_str.split() if m.strip()]
+                self.stats['gentoo_mirrors'] = mirrors
+            else:
+                self.print_warning("GENTOO_MIRRORS nicht in make.conf gefunden")
+        
+        except Exception as e:
+            self.print_warning(f"Fehler beim Lesen der Mirrors aus make.conf: {e}")
+        
+        return mirrors
+    
+    def log_mirrors_info(self):
+        """Loggt die konfigurierten Gentoo Mirrors"""
+        mirrors = self.get_gentoo_mirrors()
+        
+        if mirrors:
+            self.print_info("Konfigurierte Gentoo Mirrors:")
+            for i, mirror in enumerate(mirrors, 1):
+                print(f"  {i}. {mirror}")
+                self.logger.info(f"Mirror {i}: {mirror}")
+            self.logger.info(f"Insgesamt {len(mirrors)} Mirror(s) konfiguriert")
+        else:
+            self.print_warning("Keine Gentoo Mirrors konfiguriert!")
+        
+        # Versuche den primären Mirror zu untersuchen (der erste in der Liste)
+        if mirrors:
+            self.stats['used_mirror'] = mirrors[0]  # Portage nutzt den ersten verfügbaren
+            self.print_info(f"Primärer Mirror: {mirrors[0]}")
+            
             
     def run_command(self, command: List[str], description: str, 
                     allow_fail: bool = False, capture_output: bool = False) -> Tuple[bool, str]:
@@ -373,6 +432,9 @@ class GentooUpdater:
             retry: Anzahl der Wiederholungsversuche bei Manifest-Fehler
         """
         self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
+        
+        # Logge die konfigurierten Mirrors
+        self.log_mirrors_info()
         
         success, _ = self.run_command(
             ["emerge", "--sync"],
@@ -710,6 +772,15 @@ class GentooUpdater:
         print(f"{Colors.BOLD}Dauer:{Colors.ENDC} {duration}")
         print()
         
+        # Zeige verwendete Mirrors
+        if self.stats.get('gentoo_mirrors'):
+            print(f"{Colors.OKBLUE}Gentoo Mirrors:{Colors.ENDC}")
+            for mirror in self.stats['gentoo_mirrors']:
+                print(f"  • {mirror}")
+            if self.stats.get('used_mirror'):
+                print(f"{Colors.BOLD}Primärer Mirror:{Colors.ENDC} {self.stats['used_mirror']}")
+            print()
+        
         if self.stats['packages_updated']:
             print(f"{Colors.OKGREEN}Aktualisierte Pakete ({len(self.stats['packages_updated'])}):{Colors.ENDC}")
             for pkg in self.stats['packages_updated'][:10]:  # Zeige erste 10
@@ -757,6 +828,8 @@ class GentooUpdater:
         summary = {
             'timestamp': datetime.now().isoformat(),
             'duration': str(duration),
+            'mirrors': self.stats.get('gentoo_mirrors', []),
+            'primary_mirror': self.stats.get('used_mirror'),
             'stats': self.stats
         }
         

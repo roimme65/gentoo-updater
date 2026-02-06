@@ -27,6 +27,7 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 
 ### 📊 Monitoring & Reports
 - 📈 **Update-Zusammenfassung** mit Statistiken
+- 🌍 **Mirror-Logging** - Zeigt alle konfigurierten Gentoo Mirrors & primären Mirror
 - 📧 **E-Mail-Benachrichtigungen** (optional)
 - 📁 **Automatische Log-Rotation**
 - 🎨 **Farbige Ausgabe** mit klarer Struktur
@@ -225,6 +226,8 @@ Mehr Details findest du in:
 Das Skript führt folgende Schritte automatisch aus:
 
 1. **Repository-Synchronisation**
+   - Zeigt alle konfigurierten Gentoo Mirrors aus `/etc/portage/make.conf`
+   - Loggt primären Mirror in die Log-Datei
    - `emerge --sync` zum Aktualisieren des Portage-Trees
 
 2. **eix-Update**
@@ -346,6 +349,8 @@ Backup-Speicherort: `/var/backups/gentoo-updater/YYYYMMDD-HHMMSS/`
 
 ### Update-Summary
 Nach jedem Update:
+- 🌍 Alle konfigurierten Gentoo Mirrors
+- 🌍 Primärer Mirror (der erste verfügbare)
 - Anzahl aktualisierter Pakete
 - Anzahl entfernter Pakete
 - Kernel-Update Status
@@ -477,6 +482,14 @@ MIT License - Siehe LICENSE Datei
 Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Issue.
 
 ## Changelog
+
+### v1.3.3 (2026-02-06) - 🌍 Mirror-Logging
+- 🌍 **Neue Funktion:** Mirror-Logging
+  - Alle Gentoo Mirrors aus `/etc/portage/make.conf` werden angezeigt
+  - Primärer Mirror wird im Log festgehalten
+  - Mirrors erscheinen in Konsolen-Ausgabe und JSON-Summary
+- 📊 Erweiterte Statistics mit Mirror-Informationen
+- 📝 Besseres Logging beim Repository-Sync
 
 ### v1.1.2 (2025-01-10) - 🔧 Bug Fix
 - 🐛 **KRITISCH FIX:** Kernel-Module wurden bei jedem Update neu gebaut
