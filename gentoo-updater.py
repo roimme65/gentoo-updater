@@ -99,11 +99,26 @@ class GentooUpdater:
     """Hauptklasse für Gentoo System-Updates"""
     
     def __init__(self, verbose: bool = False, dry_run: bool = False, 
-                 rebuild_modules: bool = False, config: Optional[Config] = None):
+                 rebuild_modules: bool = False, config: Optional[Config] = None,
+                 log_level: str = 'INFO', timeout: Optional[int] = None,
+                 retry_count: int = 1, webhook_url: Optional[str] = None,
+                 max_packages: Optional[int] = None):
         self.verbose = verbose
         self.dry_run = dry_run
         self.rebuild_modules = rebuild_modules
         self.config = config or Config()
+        self.log_level = log_level
+        self.timeout = timeout
+        self.retry_count = retry_count
+        self.webhook_url = webhook_url
+        self.max_packages = max_packages
+        
+        # Skip-Flags (werden von main() gesetzt)
+        self.skip_sync = False
+        self.skip_update = False
+        self.skip_eix = False
+        self.skip_cleanup = False
+        self.skip_revdep = False
         
         # Logging einrichten
         self.log_dir = Path('/var/log/gentoo-updater')
@@ -121,13 +136,29 @@ class GentooUpdater:
             'errors': [],
             'warnings': [],
             'gentoo_mirrors': [],
-            'used_mirror': None
+            'used_mirror': None,
+            'retry_count': self.retry_count,
+            'timeout': self.timeout,
+            'max_packages': self.max_packages
         }
     
     def setup_logging(self):
         """Konfiguriert das Logging-System"""
+        # Log-Level konvertieren
+        level_map = {
+            'DEBUG': logging.DEBUG,
+            'INFO': logging.INFO,
+            'WARNING': logging.WARNING,
+            'ERROR': logging.ERROR
+        }
+        level = level_map.get(self.log_level, logging.INFO)
+        
+        # Verbose überschreibt log_level
+        if self.verbose:
+            level = logging.DEBUG
+        
         logging.basicConfig(
-            level=logging.DEBUG if self.verbose else logging.INFO,
+            level=level,
             format='%(asctime)s [%(levelname)s] %(message)s',
             handlers=[
                 logging.FileHandler(self.log_file),
@@ -905,9 +936,16 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER                                    ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.0                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
+        
+        if self.timeout:
+            print(f"{Colors.OKCYAN}⏱️  Timeout: {self.timeout} Sekunden{Colors.ENDC}")
+        if self.retry_count > 1:
+            print(f"{Colors.OKCYAN}🔄 Retry-Count: {self.retry_count}{Colors.ENDC}")
+        if self.max_packages:
+            print(f"{Colors.OKCYAN}📦 Max Packages: {self.max_packages}{Colors.ENDC}")
         
         try:
             self.check_root_privileges()
@@ -922,21 +960,28 @@ Details siehe: {self.log_file}
             # Vorbereitung: Räume Manifest-Fehler auf
             self.cleanup_manifest_quarantine()
             
-            # Schritt 1: Sync
-            if not self.sync_repositories():
-                self.print_error("Repository-Synchronisation fehlgeschlagen nach 2 Versuchen")
-                update_success = False
-                sys.exit(1)
+            # Schritt 1: Sync (wenn nicht übersprungen)
+            if not self.skip_sync:
+                if not self.sync_repositories():
+                    self.print_error("Repository-Synchronisation fehlgeschlagen nach 2 Versuchen")
+                    update_success = False
+                    sys.exit(1)
+            else:
+                print(f"{Colors.WARNING}⏭️  Skipping repository synchronisation (--skip-sync){Colors.ENDC}")
             
-            # Schritt 2: eix-update
-            self.update_eix()
+            # Schritt 2: eix-update (wenn nicht übersprungen)
+            if not self.skip_eix:
+                self.update_eix()
+            else:
+                print(f"{Colors.WARNING}⏭️  Skipping eix update (--skip-eix){Colors.ENDC}")
             
-            # Schritt 3: Prüfe Updates
-            has_updates, pretend_output = self.check_updates()
-            
-            if not has_updates and not self.dry_run:
-                self.check_config_updates()
-                end_time = datetime.now()
+            # Schritt 3: Prüfe Updates (nur wenn nicht --skip-update)
+            if not self.skip_update:
+                has_updates, pretend_output = self.check_updates()
+                
+                if not has_updates and not self.dry_run:
+                    self.check_config_updates()
+                    end_time = datetime.now()
                 duration = end_time - start_time
                 self.print_summary(duration)
                 self.send_notification(True, duration)
@@ -993,6 +1038,15 @@ Details siehe: {self.log_file}
 
 def main():
     """Hauptfunktion"""
+    # Environment-Variable Support
+    env_dry_run = os.getenv('GENTOO_UPDATER_DRY_RUN', 'false').lower() == 'true'
+    env_verbose = os.getenv('GENTOO_UPDATER_VERBOSE', 'false').lower() == 'true'
+    env_log_level = os.getenv('GENTOO_UPDATER_LOG_LEVEL', 'INFO')
+    env_timeout = os.getenv('GENTOO_UPDATER_TIMEOUT')
+    env_retry = os.getenv('GENTOO_UPDATER_RETRY_COUNT', '1')
+    env_webhook = os.getenv('GENTOO_UPDATER_WEBHOOK')
+    env_parallel = os.getenv('GENTOO_UPDATER_PARALLEL_JOBS')
+    
     parser = argparse.ArgumentParser(
         description='Gentoo System Updater - Automatisiert System-Updates',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1000,8 +1054,18 @@ def main():
 Beispiele:
   sudo gentoo-updater                    # Vollständiges System-Update
   sudo gentoo-updater --dry-run          # Zeige was gemacht würde
-  sudo gentoo-updater --verbose          # Ausführliche Ausgabe
-  sudo gentoo-updater --create-config    # Erstelle Default-Config
+  sudo gentoo-updater --only-sync        # Nur Repository-Sync
+  sudo gentoo-updater --skip-cleanup     # Überspringe depclean
+  GENTOO_UPDATER_DRY_RUN=true gentoo-updater  # Env-Var für Dry-Run
+
+Umgebungsvariablen:
+  GENTOO_UPDATER_DRY_RUN=true            # Aktiviere Dry-Run
+  GENTOO_UPDATER_VERBOSE=true            # Verbose Logging
+  GENTOO_UPDATER_LOG_LEVEL=DEBUG         # Log-Level (DEBUG/INFO/WARNING/ERROR)
+  GENTOO_UPDATER_TIMEOUT=3600            # Timeout in Sekunden
+  GENTOO_UPDATER_RETRY_COUNT=3           # Wiederholung bei Fehler
+  GENTOO_UPDATER_WEBHOOK=URL             # Webhook-URL
+  GENTOO_UPDATER_PARALLEL_JOBS=4         # Parallele Jobs
         """
     )
     
@@ -1021,11 +1085,85 @@ Beispiele:
                        type=str,
                        default='/etc/gentoo-updater.conf',
                        help='Pfad zur Konfigurationsdatei')
+    
+    # Neue Parameter für v1.4.0
+    parser.add_argument('--log-level',
+                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                       default='INFO',
+                       help='Logging-Stufe (default: INFO)')
+    
+    parser.add_argument('--skip-sync',
+                       action='store_true',
+                       help='Skip repository synchronisation')
+    parser.add_argument('--skip-update',
+                       action='store_true',
+                       help='Skip system update (@world)')
+    parser.add_argument('--skip-eix',
+                       action='store_true',
+                       help='Skip eix database update')
+    parser.add_argument('--skip-cleanup',
+                       action='store_true',
+                       help='Skip depclean')
+    parser.add_argument('--skip-revdep',
+                       action='store_true',
+                       help='Skip revdep-rebuild')
+    
+    parser.add_argument('--only-sync',
+                       action='store_true',
+                       help='Execute only repository synchronisation')
+    parser.add_argument('--only-update',
+                       action='store_true',
+                       help='Execute only system update (@world)')
+    parser.add_argument('--only-cleanup',
+                       action='store_true',
+                       help='Execute only depclean')
+    
+    parser.add_argument('--max-packages',
+                       type=int,
+                       default=None,
+                       help='Limit number of packages to update')
+    
+    parser.add_argument('--timeout',
+                       type=int,
+                       default=None,
+                       help='Timeout in seconds for emerge operations')
+    
+    parser.add_argument('--retry-count',
+                       type=int,
+                       default=1,
+                       help='Number of retries on failure (default: 1)')
+    
+    parser.add_argument('--notification-webhook',
+                       type=str,
+                       default=None,
+                       help='Send completion notification to webhook URL')
+    
+    parser.add_argument('--parallel-jobs',
+                       type=int,
+                       default=None,
+                       help='Override emerge --jobs setting')
+    
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.3.4')
+                       version='Gentoo Updater v1.4.0')
     
     args = parser.parse_args()
+    
+    # Environment-Variablen überschreiben Defaults
+    if env_dry_run:
+        args.dry_run = True
+    if env_verbose:
+        args.verbose = True
+    if env_log_level:
+        args.log_level = env_log_level
+    if env_timeout:
+        args.timeout = int(env_timeout) if env_timeout else None
+    if env_retry:
+        args.retry_count = int(env_retry) if env_retry else 1
+    if env_webhook:
+        args.notification_webhook = env_webhook
+    if env_parallel:
+        args.parallel_jobs = int(env_parallel) if env_parallel else None
     
     # Config erstellen wenn gewünscht
     if args.create_config:
@@ -1035,18 +1173,42 @@ Beispiele:
     
     try:
         config = Config(args.config)
+        
+        # Parallel-Jobs from parameter override config
+        if args.parallel_jobs:
+            config.config['emerge_jobs'] = args.parallel_jobs
+        
         updater = GentooUpdater(
             verbose=args.verbose, 
             dry_run=args.dry_run,
             rebuild_modules=args.rebuild_modules,
-            config=config
+            config=config,
+            log_level=args.log_level,
+            timeout=args.timeout,
+            retry_count=args.retry_count,
+            webhook_url=args.notification_webhook,
+            max_packages=args.max_packages
         )
         
-        # Wenn nur Module neu gebaut werden sollen
+        # Nur Module neu gebaut werden sollen
         if args.rebuild_modules:
             updater.run_modules_only()
+        # Nur spezifische Operationen ausführen (--only-*)
+        elif args.only_sync:
+            updater.sync_repositories()
+        elif args.only_update:
+            updater.update_world()
+        elif args.only_cleanup:
+            updater.depclean()
+        # Spezifische Operationen überspringen (--skip-*)
         else:
+            updater.skip_sync = args.skip_sync
+            updater.skip_update = args.skip_update
+            updater.skip_eix = args.skip_eix
+            updater.skip_cleanup = args.skip_cleanup
+            updater.skip_revdep = args.skip_revdep
             updater.run_full_update()
+            
     except KeyboardInterrupt:
         print(f"\n{Colors.WARNING}Update durch Benutzer abgebrochen{Colors.ENDC}")
         sys.exit(130)
