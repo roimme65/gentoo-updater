@@ -103,7 +103,7 @@ jobs:
           SECTIONS=(
             "## Features"
             "## Installation"
-            "## Verwendung"
+            "## Usage"
             "## Changelog"
           )
           
