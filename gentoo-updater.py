@@ -328,11 +328,9 @@ GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issu
 # German Mirrors (Default)
 # ========================
 
-# Deutsche Gentoo Mirrors (Standard-Format für Portage Sync)
+# Standard Gentoo Mirrors (offizielle, zuverlässige Server)
 DEFAULT_GERMAN_MIRRORS = [
-    'rsync://mirror.netcologne.de/gentoo-portage',  # NetCologne - Germany
-    'rsync://rsync.gwdg.de/gentoo-portage',          # GWDG - Germany
-    'rsync://mirror.f4st.host/gentoo',               # F4st Mirror - Germany
+    'rsync://rsync.gentoo.org/gentoo-portage',      # Official Gentoo - Primary
 ]
 
 CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
@@ -1341,7 +1339,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.22                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.23                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1568,7 +1566,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.22')
+                       version='Gentoo Updater v1.4.23')
     
     args = parser.parse_args()
     
