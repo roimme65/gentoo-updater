@@ -19,14 +19,20 @@ jobs:
       - name: Create Discussion from Release Tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          GITHUB_REF: ${{ github.ref }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
+          OWNER_REPO="${GITHUB_REPOSITORY}"
           echo "Creating discussion for version: $VERSION"
+          
+          # Lese Release-Notes wenn vorhanden
           if [ -f "releases/${VERSION}.md" ]; then
-            gh discussion create --title "Release $VERSION" --body-file "releases/${VERSION}.md" --repo "${GH_REPO}" && echo "✅ Discussion erstellt!" || echo "⚠️ Discussion fehlgeschlagen"
+            BODY=$(cat "releases/${VERSION}.md")
           else
-            echo "Release ${VERSION} verfügbar" > /tmp/body.txt
-            gh discussion create --title "Release $VERSION" --body-file /tmp/body.txt --repo "${GH_REPO}" && echo "✅ Discussion erstellt!" || echo "⚠️ Discussion fehlgeschlagen"
+            BODY="Release ${VERSION} ist verfügbar!"
           fi
+          
+          # Erstelle Discussion mit gh CLI
+          gh discussion create \
+            --title "Release ${VERSION}" \
+            --body "$BODY" \
+            --category "Announcements" || echo "⚠️ Discussion konnte nicht erstellt werden"
