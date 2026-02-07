@@ -328,10 +328,11 @@ GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issu
 # German Mirrors (Default)
 # ========================
 
+# Deutsche Gentoo Mirrors (rsync-basiert für Sync-Operationen)
 DEFAULT_GERMAN_MIRRORS = [
-    'https://ftp-stud.hs-esslingen.de/pub/Mirrors/gentoo/',
-    'https://mirror.netcologne.de/gentoo/',
-    'https://gentoo.nachtschicht.net/',
+    'rsync://mirror.netcologne.de/gentoo/',  # NetCologne - Germany
+    'rsync://ftp.gwdg.de/pub/linux/gentoo/', # GWDG - Germany
+    'rsync://mirror.walk.infomir.de/pub/mirror/gentoo/',  # Infomir - Germany
 ]
 
 CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
@@ -796,19 +797,76 @@ class GentooUpdater:
         # Logge die konfigurierten Mirrors
         self.log_mirrors_info()
         
-        # Stelle sicher, dass Umgebungsvariablen für Mirrors gesetzt sind
-        custom_env = {}
+        # Aktualisiere repos.conf mit Custom Mirrors wenn vorhanden
+        repos_conf_updated = False
+        repos_conf_backup = None
+        repos_conf_path = None
+        
         if self.custom_mirrors:
             mirrors_str = ' '.join(self.custom_mirrors)
-            custom_env['GENTOO_MIRRORS'] = mirrors_str
             self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
+            
+            # Prüfe verschiedene mögliche Pfade für repos.conf
+            possible_paths = [
+                '/etc/portage/repos.conf/gentoo.conf',
+                '/etc/portage/repos.conf',
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path) and os.path.isfile(path):
+                    repos_conf_path = path
+                    break
+            
+            if repos_conf_path:
+                try:
+                    # Backup der Original-Datei
+                    with open(repos_conf_path, 'r') as f:
+                        repos_conf_backup = f.read()
+                    
+                    # Verwende ersten rsync Mirror
+                    first_mirror = self.custom_mirrors[0]
+                    sync_uri = first_mirror.rstrip('/')  # Entferne trailing slash falls vorhanden
+                    
+                    # Lese und aktualisiere repos.conf
+                    with open(repos_conf_path, 'r') as f:
+                        content = f.read()
+                    
+                    # Ersetze sync-uri
+                    updated_content = re.sub(
+                        r'sync-uri\s*=\s*.*$',
+                        f'sync-uri = {sync_uri}',
+                        content,
+                        flags=re.MULTILINE
+                    )
+                    
+                    # Schreibe aktualisierte Datei
+                    with open(repos_conf_path, 'w') as f:
+                        f.write(updated_content)
+                    
+                    repos_conf_updated = True
+                    self.print_info(f"repos.conf aktualisiert mit deutschem Mirror: {sync_uri}")
+                    
+                except Exception as e:
+                    self.print_warning(f"Konnte repos.conf nicht aktualisieren: {e}")
+                    repos_conf_updated = False
+            else:
+                self.print_warning("Konnte keine repos.conf Datei finden - nutze Standard-Sync")
         
-        success, _ = self.run_command(
-            ["emerge", "--sync"],
-            "Synchronisiere Portage-Repositories",
-            allow_fail=True,
-            custom_env=custom_env if custom_env else None
-        )
+        try:
+            success, _ = self.run_command(
+                ["emerge", "--sync"],
+                "Synchronisiere Portage-Repositories",
+                allow_fail=True
+            )
+        finally:
+            # Stelle repos.conf wieder her wenn wir es geändert haben
+            if repos_conf_updated and repos_conf_backup and repos_conf_path:
+                try:
+                    with open(repos_conf_path, 'w') as f:
+                        f.write(repos_conf_backup)
+                    self.print_info("repos.conf wiederhergestellt")
+                except Exception as e:
+                    self.print_warning(f"Konnte repos.conf nicht wiederherstellen: {e}")
         
         # Bei Fehler: Quarantine aufräumen und nochmal versuchen
         if not success and retry < 2:
@@ -1273,7 +1331,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.0                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.2                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1319,10 +1377,10 @@ Details siehe: {self.log_file}
                 if not has_updates and not self.dry_run:
                     self.check_config_updates()
                     end_time = datetime.now()
-                duration = end_time - start_time
-                self.print_summary(duration)
-                self.send_notification(True, duration)
-                return
+                    duration = end_time - start_time
+                    self.print_summary(duration)
+                    self.send_notification(True, duration)
+                    return
                 
             # Schritt 4: System-Update
             success, kernel_updated = self.update_system()
@@ -1423,7 +1481,7 @@ Umgebungsvariablen:
                        default='/etc/gentoo-updater.conf',
                        help='Pfad zur Konfigurationsdatei')
     
-    # Neue Parameter für v1.4.0
+    # Parameter für v1.4.2
     parser.add_argument('--log-level',
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                        default='INFO',
@@ -1500,7 +1558,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.1')
+                       version='Gentoo Updater v1.4.2')
     
     args = parser.parse_args()
     
