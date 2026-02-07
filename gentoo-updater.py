@@ -810,17 +810,12 @@ class GentooUpdater:
         # Logge die konfigurierten Mirrors (ignoriere Output)
         self.log_mirrors_info()
         
-        # Aktualisiere make.conf und repos.conf mit Custom Mirrors wenn vorhanden
-        make_conf_updated = False
-        repos_conf_updated = False
-        repos_conf_backup = None
-        repos_conf_path = None
-        
+        # Aktualisiere make.conf mit Custom Mirrors wenn vorhanden
         if self.custom_mirrors:
             mirrors_str = ' '.join(self.custom_mirrors)
             self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
             
-            # Aktualisiere auch /etc/portage/make.conf
+            # Aktualisiere /etc/portage/make.conf
             make_conf_path = '/etc/portage/make.conf'
             if os.path.exists(make_conf_path):
                 try:
@@ -843,72 +838,16 @@ class GentooUpdater:
                     if updated_content != make_conf_content:
                         with open(make_conf_path, 'w') as f:
                             f.write(updated_content)
-                        make_conf_updated = True
                         self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
                 except Exception as e:
                     self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
-            
-            # Prüfe verschiedene mögliche Pfade für repos.conf
-            possible_paths = [
-                '/etc/portage/repos.conf/gentoo.conf',
-                '/etc/portage/repos.conf',
-            ]
-            
-            for path in possible_paths:
-                if os.path.exists(path) and os.path.isfile(path):
-                    repos_conf_path = path
-                    break
-            
-            if repos_conf_path:
-                try:
-                    # Backup der Original-Datei
-                    with open(repos_conf_path, 'r') as f:
-                        repos_conf_backup = f.read()
-                    
-                    # Verwende ersten rsync Mirror
-                    first_mirror = self.custom_mirrors[0]
-                    sync_uri = first_mirror.rstrip('/')  # Entferne trailing slash falls vorhanden
-                    
-                    # Lese und aktualisiere repos.conf
-                    with open(repos_conf_path, 'r') as f:
-                        content = f.read()
-                    
-                    # Ersetze sync-uri
-                    updated_content = re.sub(
-                        r'sync-uri\s*=\s*.*$',
-                        f'sync-uri = {sync_uri}',
-                        content,
-                        flags=re.MULTILINE
-                    )
-                    
-                    # Schreibe aktualisierte Datei
-                    with open(repos_conf_path, 'w') as f:
-                        f.write(updated_content)
-                    
-                    repos_conf_updated = True
-                    self.print_info(f"repos.conf aktualisiert mit deutschem Mirror: {sync_uri}")
-                    
-                except Exception as e:
-                    self.print_warning(f"Konnte repos.conf nicht aktualisieren: {e}")
-                    repos_conf_updated = False
-            else:
-                self.print_warning("Konnte keine repos.conf Datei finden - nutze Standard-Sync")
         
-        try:
-            success, output = self.run_command(
-                ["emerge", "--sync"],
-                "Synchronisiere Portage-Repositories",
-                allow_fail=True
-            )
-        finally:
-            # Stelle repos.conf wieder her wenn wir es geändert haben
-            if repos_conf_updated and repos_conf_backup and repos_conf_path:
-                try:
-                    with open(repos_conf_path, 'w') as f:
-                        f.write(repos_conf_backup)
-                    self.print_info("repos.conf wiederhergestellt")
-                except Exception as e:
-                    self.print_warning(f"Konnte repos.conf nicht wiederherstellen: {e}")
+        # Verwende Standard-Sync mit GENTOO_MIRRORS aus make.conf
+        success, output = self.run_command(
+            ["emerge", "--sync"],
+            "Synchronisiere Portage-Repositories",
+            allow_fail=True
+        )
         
         # Bei Fehler: Quarantine aufräumen und nochmal versuchen
         if not success and retry < 2:
@@ -1373,7 +1312,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.18                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.19                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1600,7 +1539,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.18')
+                       version='Gentoo Updater v1.4.19')
     
     args = parser.parse_args()
     
