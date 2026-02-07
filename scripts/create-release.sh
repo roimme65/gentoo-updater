@@ -357,15 +357,26 @@ Bitte benutzt diesen Thread um v${NEW_VERSION} zu diskutieren.
 
 **Vielen Dank für eure Unterstützung!** 🙏"
     
-    if gh discussion create \
+    # Versuche Discussion zu erstellen mit Fehlerausgabe
+    discussion_output=$(gh discussion create \
         --title "v${NEW_VERSION} - Release Discussion" \
         --body "$discussion_body" \
         --category "Announcements" \
-        2>/dev/null; then
+        2>&1)
+    discussion_exit_code=$?
+    
+    if [ $discussion_exit_code -eq 0 ]; then
         print_success "GitHub Discussion erstellt: https://github.com/roimme65/gentoo-updater/discussions"
     else
         print_warning "GitHub Discussion konnte nicht erstellt werden (optional)."
-        print_info "Du kannst die Diskussion manuell erstellen: https://github.com/roimme65/gentoo-updater/discussions/new"
+        if [[ "$discussion_output" == *"not found"* ]] || [[ "$discussion_output" == *"404"* ]]; then
+            print_info "→ Kategorie 'Announcements' nicht gefunden. Erstelle ohne Kategorie..."
+            gh discussion create \
+                --title "v${NEW_VERSION} - Release Discussion" \
+                --body "$discussion_body" \
+                2>/dev/null && print_success "GitHub Discussion erstellt: https://github.com/roimme65/gentoo-updater/discussions"
+        fi
+        print_info "Du kannst die Diskussion auch manuell erstellen: https://github.com/roimme65/gentoo-updater/discussions/new"
     fi
 else
     print_warning "gh CLI nicht installiert. Discussion kann nicht automatisch erstellt werden."
