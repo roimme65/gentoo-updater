@@ -306,6 +306,13 @@ class ReleaseManager:
         """Erstellt GitHub Release"""
         print_info("Erstelle GitHub Release...")
         
+        # Prüfe ob gh installiert ist
+        try:
+            subprocess.run(['which', 'gh'], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            print_warning("gh CLI nicht installiert - überspringe GitHub Release")
+            return False
+        
         release_file = self.project_root / 'releases' / f"v{self.new_version}.md"
         
         if release_file.exists():
@@ -314,37 +321,70 @@ class ReleaseManager:
         else:
             body = f"Release v{self.new_version}"
         
-        cmd = [
-            'gh', 'release', 'create',
-            f'v{self.new_version}',
-            f'--title=v{self.new_version} - Release',
-            f'--notes={body}'
-        ]
-        
-        success, msg = self.run_command(cmd, "Create GitHub release")
-        
-        if success:
-            print_success(f"GitHub Release erstellt: v{self.new_version}")
-            return True
-        else:
-            print_warning(f"GitHub Release-Erstellung fehlgeschlagen: {msg}")
+        # Schreibe Body in temporäre Datei für gh (robuster als inline)
+        try:
+            cmd = [
+                'gh', 'release', 'create',
+                f'v{self.new_version}',
+                f'--title', f'v{self.new_version} - Release',
+                f'--notes-file', '-'
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                input=body,
+                capture_output=True,
+                text=True,
+                cwd=self.project_root
+            )
+            
+            if result.returncode == 0:
+                print_success(f"GitHub Release erstellt: v{self.new_version}")
+                return True
+            else:
+                # Fallback: ohne Notes-Datei
+                cmd_simple = [
+                    'gh', 'release', 'create',
+                    f'v{self.new_version}',
+                    f'--title', f'v{self.new_version} - Release'
+                ]
+                
+                result = subprocess.run(cmd_simple, capture_output=True, text=True, cwd=self.project_root)
+                
+                if result.returncode == 0:
+                    print_success(f"GitHub Release erstellt (ohne Notes): v{self.new_version}")
+                    return True
+                else:
+                    print_warning(f"GitHub Release-Erstellung fehlgeschlagen")
+                    return False
+        except Exception as e:
+            print_warning(f"GitHub Release-Fehler: {e}")
             return False
     
     def create_github_discussion(self):
-        """Erstellt GitHub Discussion"""
+        """Erstellt GitHub Discussion (optional)"""
         print_info("Erstelle GitHub Discussion...")
+        
+        # Prüfe ob gh installiert ist
+        try:
+            subprocess.run(['which', 'gh'], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            print_warning("gh CLI nicht installiert - überspringe GitHub Discussion")
+            return True  # Kein kritischer Fehler
         
         # Prüfe ob gh discussion unterstützt wird
         check_cmd = ['gh', 'discussion', '--help']
         result = subprocess.run(check_cmd, capture_output=True, text=True, cwd=self.project_root)
         
-        if 'unknown command' in result.stderr or 'unknown command' in result.stdout:
-            print_warning("GitHub Discussion nicht unterstützt (gh CLI zu alt)")
-            print_info(f"→ Erstelle Discussion manuell: https://github.com/imme-php/gentoo-updater/discussions/new")
+        if 'unknown command' in result.stderr.lower() or 'unknown command' in result.stdout.lower():
+            print_warning("GitHub Discussions nicht unterstützt (gh CLI zu alt)")
+            print_info("→ Upgrade gh CLI oder erstelle Discussion manuell")
+            print_info(f"   https://github.com/imme-php/gentoo-updater/discussions/new")
             return True  # Kein Fehler - nur nicht unterstützt
         
-        discussion_body = f"Release v{self.new_version} ist verfügbar!\n\n"
-        discussion_body += "Bitte testen und Feedback geben."
+        discussion_body = f"🎉 **Release v{self.new_version} ist verfügbar!**\n\n"
+        discussion_body += "Bitte testen und Feedback geben.\n\n"
+        discussion_body += f"📖 Release-Notes: https://github.com/imme-php/gentoo-updater/releases/tag/v{self.new_version}"
         
         cmd = [
             'gh', 'discussion', 'create',
@@ -360,19 +400,21 @@ class ReleaseManager:
             print_success("GitHub Discussion erstellt")
             return True
         else:
-            # Fallback: ohne Kategorie
-            print_warning("Versuche ohne Kategorie...")
-            cmd_no_cat = cmd[:-2]  # Entferne '--category', 'Announcements'
+            # Check ob es eine Kategorie-Problem ist
+            if 'category' in result.stderr.lower() or 'not found' in result.stderr.lower():
+                print_warning("Kategorie 'Announcements' nicht gefunden - versuche ohne Kategorie...")
+                cmd_no_cat = cmd[:-2]  # Entferne '--category', 'Announcements'
+                
+                result = subprocess.run(cmd_no_cat, capture_output=True, text=True, cwd=self.project_root)
+                
+                if result.returncode == 0:
+                    print_success("GitHub Discussion erstellt (ohne Kategorie)")
+                    return True
             
-            result = subprocess.run(cmd_no_cat, capture_output=True, text=True, cwd=self.project_root)
-            
-            if result.returncode == 0:
-                print_success("GitHub Discussion erstellt (ohne Kategorie)")
-                return True
-            else:
-                print_warning(f"GitHub Discussion nicht erstellt (optional): {result.stderr}")
-                print_info(f"→ Erstelle Discussion manuell: https://github.com/imme-php/gentoo-updater/discussions/new")
-                return True  # Kein Fehler - optional
+            # Bei anderen Fehlern
+            print_warning(f"GitHub Discussion konnte nicht erstellt werden (optional)")
+            print_info(f"→ Erstelle Discussion manuell: https://github.com/imme-php/gentoo-updater/discussions/new")
+            return True  # Kein kritischer Fehler
 
 def main():
     parser = argparse.ArgumentParser(
