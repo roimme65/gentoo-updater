@@ -12,10 +12,329 @@ import shutil
 import time
 import json
 import re
+import locale
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 import logging
+
+
+# ========================
+# Internationalisierung (i18n)
+# ========================
+
+def detect_system_language() -> str:
+    """Detektiert die Systemsprache aus den Locale-Einstellungen"""
+    try:
+        system_locale = locale.getlocale()[0]
+        if system_locale and system_locale.startswith('de'):
+            return 'de'
+    except:
+        pass
+    return 'en'
+
+
+CURRENT_LANGUAGE = detect_system_language()
+
+TRANSLATIONS = {
+    'ROOT_ERROR': {
+        'de': 'Dieses Skript benötigt Root-Rechte.',
+        'en': 'This script requires root privileges.'
+    },
+    'ROOT_INFO': {
+        'de': 'Bitte mit sudo ausführen: sudo gentoo-updater',
+        'en': 'Please run with sudo: sudo gentoo-updater'
+    },
+    'DISK_SPACE_INFO': {
+        'de': 'Freier Speicherplatz: {free_gb:.2f} GB',
+        'en': 'Free disk space: {free_gb:.2f} GB'
+    },
+    'DISK_SPACE_ERROR': {
+        'de': 'Nicht genug Speicherplatz! Mindestens {min_space} GB erforderlich.',
+        'en': 'Not enough disk space! At least {min_space} GB required.'
+    },
+    'BACKUP_SUCCESS': {
+        'de': 'Backup erstellt: {path}',
+        'en': 'Backup created: {path}'
+    },
+    'BACKUP_FAILED': {
+        'de': 'Backup fehlgeschlagen: {error}',
+        'en': 'Backup failed: {error}'
+    },
+    'OLD_BACKUP_DELETED': {
+        'de': 'Altes Backup gelöscht: {name}',
+        'en': 'Old backup deleted: {name}'
+    },
+    'BLOCKED_PACKAGES_FOUND': {
+        'de': 'Blockierte Pakete gefunden!',
+        'en': 'Blocked packages found!'
+    },
+    'BLOCKED_INFO': {
+        'de': 'Bitte lösen Sie die Blockierungen manuell auf.',
+        'en': 'Please resolve the blocking packages manually.'
+    },
+    'CRITICAL_PACKAGES_WARNING': {
+        'de': 'ACHTUNG: Kritische Pakete werden aktualisiert!',
+        'en': 'WARNING: Critical packages will be updated!'
+    },
+    'CRITICAL_UPDATES_REQUIRED': {
+        'de': 'Diese Updates können System-Neustarts oder Rebuilds erfordern.',
+        'en': 'These updates may require system restarts or rebuilds.'
+    },
+    'EIX_NOT_INSTALLED': {
+        'de': 'eix ist nicht installiert, überspringe...',
+        'en': 'eix is not installed, skipping...'
+    },
+    'NO_UPDATES': {
+        'de': 'Keine Updates verfügbar - System ist aktuell!',
+        'en': 'No updates available - system is up to date!'
+    },
+    'UPDATES_AVAILABLE': {
+        'de': 'Updates verfügbar:',
+        'en': 'Updates available:'
+    },
+    'SYSTEM_UPDATE_FAILED': {
+        'de': 'System-Update fehlgeschlagen',
+        'en': 'System update failed'
+    },
+    'KERNEL_UPDATE_DETECTED': {
+        'de': 'Kernel-Update erkannt! Module werden nach dem Update neu gebaut.',
+        'en': 'Kernel update detected! Modules will be rebuilt after the update.'
+    },
+    'CHECK_KERNEL_MODULES': {
+        'de': 'Prüfe Kernel-Module Status...',
+        'en': 'Checking kernel module status...'
+    },
+    'MODULES_STATUS': {
+        'de': 'Laufender Kernel ({running}) != Installierter Kernel ({installed})',
+        'en': 'Running kernel ({running}) != installed kernel ({installed})'
+    },
+    'NO_EXTERNAL_MODULES': {
+        'de': 'Keine externen Kernel-Module gefunden (oder bereits aktuell)',
+        'en': 'No external kernel modules found (or already up to date)'
+    },
+    'MODULES_REBUILD_SUCCESS': {
+        'de': 'Alle Kernel-Module erfolgreich neu gebaut',
+        'en': 'All kernel modules successfully rebuilt'
+    },
+    'MODULES_REBUILD_TIP': {
+        'de': 'Tipp: Nach einem Neustart werden die neuen Module verwendet',
+        'en': 'Tip: The new modules will be used after a restart'
+    },
+    'DEPCLEAN_SKIPPED': {
+        'de': 'Depclean übersprungen (in Config deaktiviert)',
+        'en': 'Depclean skipped (disabled in config)'
+    },
+    'REVDEP_SKIPPED': {
+        'de': 'revdep-rebuild übersprungen (in Config deaktiviert)',
+        'en': 'revdep-rebuild skipped (disabled in config)'
+    },
+    'CONFIG_UPDATES_FOUND': {
+        'de': 'Konfigurations-Updates gefunden!',
+        'en': 'Configuration updates found!'
+    },
+    'CONFIG_NO_UPDATES': {
+        'de': 'Keine Konfigurations-Updates ausstehend',
+        'en': 'No configuration updates pending'
+    },
+    'UPDATE_INTERRUPTED': {
+        'de': 'Update durch Benutzer abgebrochen',
+        'en': 'Update interrupted by user'
+    },
+    'UNEXPECTED_ERROR': {
+        'de': 'Unerwarteter Fehler: {error}',
+        'en': 'Unexpected error: {error}'
+    },
+    'REVDEP_NOT_FOUND': {
+        'de': 'revdep-rebuild nicht gefunden (gentoolkit installieren?)',
+        'en': 'revdep-rebuild not found (install gentoolkit?)'
+    },
+    'CONFIG_CHECK_FAILED': {
+        'de': 'Konfigurations-Prüfung fehlgeschlagen: {error}',
+        'en': 'Configuration check failed: {error}'
+    },
+    'KERNEL_CHECK_FAILED': {
+        'de': 'Kernel-Prüfung fehlgeschlagen: {error}',
+        'en': 'Kernel check failed: {error}'
+    },
+    'KERNEL_LIST_INFO': {
+        'de': 'Kernel-Updates müssen manuell durchgeführt werden!',
+        'en': 'Kernel updates must be performed manually!'
+    },
+    'KERNEL_UPDATE_STEPS': {
+        'de': 'Schritte für Kernel-Update:',
+        'en': 'Steps for kernel update:'
+    },
+    'CONFIG_LOAD_WARNING': {
+        'de': '[WARNING] Konnte Config nicht laden: {error}',
+        'en': '[WARNING] Could not load config: {error}'
+    },
+    'CONFIG_SAVE_SUCCESS': {
+        'de': '[SUCCESS] Default-Konfiguration gespeichert: {path}',
+        'en': '[SUCCESS] Default configuration saved: {path}'
+    },
+    'CONFIG_SAVE_ERROR': {
+        'de': '[ERROR] Konnte Config nicht speichern: {error}',
+        'en': '[ERROR] Could not save config: {error}'
+    },
+    'SYNC_MIRROR_INFO': {
+        'de': 'Konfigurierte Gentoo Mirrors:',
+        'en': 'Configured Gentoo Mirrors:'
+    },
+    'SYNC_PRIMARY_MIRROR': {
+        'de': 'Primärer Mirror: {mirror}',
+        'en': 'Primary mirror: {mirror}'
+    },
+    'NO_MIRRORS': {
+        'de': 'Keine Gentoo Mirrors konfiguriert!',
+        'en': 'No Gentoo mirrors configured!'
+    },
+    'COMMAND_NOT_FOUND': {
+        'de': 'Befehl nicht gefunden: {cmd}',
+        'en': 'Command not found: {cmd}'
+    },
+    'RUN_COMMAND_ERROR': {
+        'de': 'Fehler bei {desc}: {error}',
+        'en': 'Error in {desc}: {error}'
+    },
+    'DRY_RUN_MSG': {
+        'de': 'DRY-RUN: Würde ausführen: {cmd}',
+        'en': 'DRY-RUN: Would execute: {cmd}'
+    },
+    'COMMAND_EXEC_TIMEOUT': {
+        'de': '⏱️  Timeout: {timeout} Sekunden',
+        'en': '⏱️  Timeout: {timeout} seconds'
+    },
+    'RETRY_COUNT_MSG': {
+        'de': '🔄 Retry-Count: {count}',
+        'en': '🔄 Retry-Count: {count}'
+    },
+    'MAX_PACKAGES_MSG': {
+        'de': '📦 Max Packages: {max}',
+        'en': '📦 Max Packages: {max}'
+    },
+    'UPDATE_SKIPPED': {
+        'de': '⏭️  Überspringe Repository-Synchronisation (--skip-sync)',
+        'en': '⏭️  Skipping repository synchronisation (--skip-sync)'
+    },
+    'EIX_SKIPPED': {
+        'de': '⏭️  Überspringe eix Update (--skip-eix)',
+        'en': '⏭️  Skipping eix update (--skip-eix)'
+    },
+    'SYNC_FAILED': {
+        'de': 'Repository-Synchronisation fehlgeschlagen nach 2 Versuchen',
+        'en': 'Repository synchronisation failed after 2 attempts'
+    },
+    'MODULES_CURRENT': {
+        'de': 'Kernel-Module sind aktuell - keine Neucompilierung nötig',
+        'en': 'Kernel modules are up to date - no rebuild needed'
+    },
+    'MODULES_MANUAL_CHECK': {
+        'de': 'Bitte Kernel-Updates und Konfigurations-Änderungen manuell prüfen',
+        'en': 'Please check kernel updates and configuration changes manually'
+    },
+    'NOTIFICATION_SENT': {
+        'de': 'Benachrichtigung gesendet an {email}',
+        'en': 'Notification sent to {email}'
+    },
+    'NOTIFICATION_ERROR': {
+        'de': 'Konnte Benachrichtigung nicht senden: {error}',
+        'en': 'Could not send notification: {error}'
+    },
+    'SUMMARY_TITLE': {
+        'de': 'UPDATE-ZUSAMMENFASSUNG',
+        'en': 'UPDATE SUMMARY'
+    },
+    'DISK_CHECK_FAILED': {
+        'de': 'Konnte Speicherplatz nicht prüfen: {error}',
+        'en': 'Could not check disk space: {error}'
+    },
+    'QUARANTINE_CLEANUP': {
+        'de': 'Räume auf: {path}',
+        'en': 'Cleaning up: {path}'
+    },
+    'QUARANTINE_DELETED': {
+        'de': 'Quarantine-Verzeichnis gelöscht',
+        'en': 'Quarantine directory deleted'
+    },
+    'MANIFEST_FILE_NOT_FOUND': {
+        'de': 'make.conf nicht gefunden: {path}',
+        'en': 'make.conf not found: {path}'
+    },
+    'SYNC_RETRY': {
+        'de': 'Sync fehlgeschlagen - räume auf und versuche erneut...',
+        'en': 'Sync failed - cleaning up and retrying...'
+    },
+    'MODULE_ANALYSIS': {
+        'de': 'Analysiere zu aktualisierende Pakete...',
+        'en': 'Analyzing packages to update...'
+    },
+    'MODULES_AFTER_UPDATE': {
+        'de': 'Module müssen für den neuen Kernel neu gebaut werden',
+        'en': 'Modules need to be rebuilt for the new kernel'
+    },
+    'MODULES_CURRENT_KERNEL': {
+        'de': 'Laufender Kernel ist aktuell - Module müssen nicht neu gebaut werden',
+        'en': 'Running kernel is up to date - modules do not need to be rebuilt'
+    },
+    'PERFORMANCE_INFO': {
+        'de': 'Performance: {jobs} parallele Jobs, Load Average: {load}',
+        'en': 'Performance: {jobs} parallel jobs, Load Average: {load}'
+    },
+    'PACKAGE_LIMIT': {
+        'de': 'Anzahl zu aktualisierender Pakete auf {max} begrenzt',
+        'en': 'Limiting packages to update to {max}'
+    },
+}
+
+
+def _(key: str, **kwargs) -> str:
+    """
+    Übersetzungs-Helper Funktion (Gettext-ähnlich)
+    
+    Args:
+        key: Übersetzungs-Key im TRANSLATIONS Dictionary
+        **kwargs: Platzhalter für Format-Strings
+        
+    Returns:
+        Übersetzter Text in CURRENT_LANGUAGE oder 'en' fallback
+    """
+    if key not in TRANSLATIONS:
+        return key  # Rückfall auf Key selbst wenn nicht gefunden
+    
+    translation = TRANSLATIONS[key].get(CURRENT_LANGUAGE, TRANSLATIONS[key].get('en', key))
+    
+    # Format-String mit kwargs ersetzen
+    if kwargs:
+        try:
+            return translation.format(**kwargs)
+        except KeyError as e:
+            return f"[TRANSLATION_ERROR: {key} missing parameter {e}]"
+    
+    return translation
+
+
+# ========================
+# GitHub Integration
+# ========================
+
+GITHUB_REPO = 'https://github.com/imme-php/gentoo-updater'
+GITHUB_ISSUES = 'https://github.com/imme-php/gentoo-updater/issues'
+GITHUB_DISCUSSIONS = 'https://github.com/imme-php/gentoo-updater/discussions'
+GITHUB_ISSUE_TEMPLATE_BUG = 'https://github.com/imme-php/gentoo-updater/issues/new?template=bug_report.md'
+GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issues/new?template=feature_request.md'
+
+# ========================
+# German Mirrors (Default)
+# ========================
+
+DEFAULT_GERMAN_MIRRORS = [
+    'https://ftp-stud.hs-esslingen.de/pub/Mirrors/gentoo/',
+    'https://mirror.netcologne.de/gentoo/',
+    'https://gentoo.nachtschicht.net/',
+]
+
+CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
 
 
 class Colors:
@@ -63,7 +382,7 @@ class Config:
                     config.update(user_config)
                     return config
             except Exception as e:
-                print(f"{Colors.WARNING}[WARNING]{Colors.ENDC} Konnte Config nicht laden: {e}")
+                print(f"{Colors.WARNING}[WARNING]{Colors.ENDC} {_('CONFIG_LOAD_WARNING', error=e)}")
                 return self.DEFAULT_CONFIG.copy()
         return self.DEFAULT_CONFIG.copy()
     
@@ -72,9 +391,9 @@ class Config:
         try:
             with open(self.config_file, 'w') as f:
                 json.dump(self.DEFAULT_CONFIG, f, indent=2)
-            print(f"{Colors.OKGREEN}[SUCCESS]{Colors.ENDC} Default-Konfiguration gespeichert: {self.config_file}")
+            print(f"{Colors.OKGREEN}[SUCCESS]{Colors.ENDC} {_('CONFIG_SAVE_SUCCESS', path=self.config_file)}")
         except Exception as e:
-            print(f"{Colors.FAIL}[ERROR]{Colors.ENDC} Konnte Config nicht speichern: {e}")
+            print(f"{Colors.FAIL}[ERROR]{Colors.ENDC} {_('CONFIG_SAVE_ERROR', error=e)}")
     
     def get(self, key: str, default=None):
         """Gibt Konfigurationswert zurück"""
@@ -102,7 +421,7 @@ class GentooUpdater:
                  rebuild_modules: bool = False, config: Optional[Config] = None,
                  log_level: str = 'INFO', timeout: Optional[int] = None,
                  retry_count: int = 1, webhook_url: Optional[str] = None,
-                 max_packages: Optional[int] = None):
+                 max_packages: Optional[int] = None, custom_mirrors: Optional[List[str]] = None):
         self.verbose = verbose
         self.dry_run = dry_run
         self.rebuild_modules = rebuild_modules
@@ -112,6 +431,7 @@ class GentooUpdater:
         self.retry_count = retry_count
         self.webhook_url = webhook_url
         self.max_packages = max_packages
+        self.custom_mirrors = custom_mirrors
         
         # Skip-Flags (werden von main() gesetzt)
         self.skip_sync = False
@@ -203,8 +523,8 @@ class GentooUpdater:
     def check_root_privileges(self):
         """Prüft, ob das Skript mit Root-Rechten läuft"""
         if os.geteuid() != 0:
-            self.print_error("Dieses Skript benötigt Root-Rechte.")
-            self.print_info("Bitte mit sudo ausführen: sudo gentoo-updater")
+            self.print_error(_('ROOT_ERROR'))
+            self.print_info(_('ROOT_INFO'))
             sys.exit(1)
     
     def check_disk_space(self) -> bool:
@@ -215,14 +535,14 @@ class GentooUpdater:
             stat = shutil.disk_usage('/usr')
             free_gb = stat.free / (1024**3)
             
-            self.print_info(f"Freier Speicherplatz: {free_gb:.2f} GB")
+            self.print_info(_('DISK_SPACE_INFO', free_gb=free_gb))
             
             if free_gb < min_space_gb:
-                self.print_error(f"Nicht genug Speicherplatz! Mindestens {min_space_gb} GB erforderlich.")
+                self.print_error(_('DISK_SPACE_ERROR', min_space=min_space_gb))
                 return False
             return True
         except Exception as e:
-            self.print_warning(f"Konnte Speicherplatz nicht prüfen: {e}")
+            self.print_warning(_('DISK_CHECK_FAILED', error=e))
             return True
     
     def backup_important_files(self):
@@ -253,11 +573,11 @@ class GentooUpdater:
                     else:
                         shutil.copy2(file_path, backup_path)
             
-            self.print_success(f"Backup erstellt: {backup_path}")
+            self.print_success(_('BACKUP_SUCCESS', path=backup_path))
             self.cleanup_old_backups(backup_dir)
             
         except Exception as e:
-            self.print_warning(f"Backup fehlgeschlagen: {e}")
+            self.print_warning(_('BACKUP_FAILED', error=e))
     
     def cleanup_old_backups(self, backup_dir: Path):
         """Löscht alte Backups"""
@@ -268,7 +588,7 @@ class GentooUpdater:
             for item in backup_dir.iterdir():
                 if item.is_dir() and item.stat().st_mtime < cutoff_time:
                     shutil.rmtree(item)
-                    self.print_info(f"Altes Backup gelöscht: {item.name}")
+                    self.print_info(_('OLD_BACKUP_DELETED', name=item.name))
         except Exception as e:
             self.print_warning(f"Konnte alte Backups nicht löschen: {e}")
     
@@ -284,9 +604,9 @@ class GentooUpdater:
             )
             
             if "blocked by" in result.stdout.lower() or "blocking" in result.stdout.lower():
-                self.print_error("Blockierte Pakete gefunden!")
+                self.print_error(_('BLOCKED_PACKAGES_FOUND'))
                 print(result.stdout)
-                self.print_info("Bitte lösen Sie die Blockierungen manuell auf.")
+                self.print_info(_('BLOCKED_INFO'))
                 return False
             return True
         except Exception as e:
@@ -303,10 +623,10 @@ class GentooUpdater:
                 found_critical.append(pkg)
         
         if found_critical:
-            self.print_warning("ACHTUNG: Kritische Pakete werden aktualisiert!")
+            self.print_warning(_('CRITICAL_PACKAGES_WARNING'))
             for pkg in found_critical:
                 self.print_warning(f"  - {pkg}")
-            self.print_info("Diese Updates können System-Neustarts oder Rebuilds erfordern.")
+            self.print_info(_('CRITICAL_UPDATES_REQUIRED'))
         
         return found_critical
     
@@ -315,10 +635,10 @@ class GentooUpdater:
         quarantine_dir = "/var/db/repos/gentoo/.tmp-unverified-download-quarantine"
         
         if os.path.exists(quarantine_dir):
-            self.print_info(f"Räume auf: {quarantine_dir}")
+            self.print_info(_('QUARANTINE_CLEANUP', path=quarantine_dir))
             try:
                 shutil.rmtree(quarantine_dir)
-                self.print_success("Quarantine-Verzeichnis gelöscht")
+                self.print_success(_('QUARANTINE_DELETED'))
             except Exception as e:
                 self.print_warning(f"Konnte Quarantine nicht löschen: {str(e)}")
     
@@ -332,7 +652,7 @@ class GentooUpdater:
         make_conf_path = '/etc/portage/make.conf'
         
         if not os.path.exists(make_conf_path):
-            self.print_warning(f"make.conf nicht gefunden: {make_conf_path}")
+            self.print_warning(_('MANIFEST_FILE_NOT_FOUND', path=make_conf_path))
             return mirrors
         
         try:
@@ -365,22 +685,23 @@ class GentooUpdater:
         mirrors = self.get_gentoo_mirrors()
         
         if mirrors:
-            self.print_info("Konfigurierte Gentoo Mirrors:")
+            self.print_info(_('SYNC_MIRROR_INFO'))
             for i, mirror in enumerate(mirrors, 1):
                 print(f"  {i}. {mirror}")
                 self.logger.info(f"Mirror {i}: {mirror}")
             self.logger.info(f"Insgesamt {len(mirrors)} Mirror(s) konfiguriert")
         else:
-            self.print_warning("Keine Gentoo Mirrors konfiguriert!")
+            self.print_warning(_('NO_MIRRORS'))
         
         # Versuche den primären Mirror zu untersuchen (der erste in der Liste)
         if mirrors:
             self.stats['used_mirror'] = mirrors[0]  # Portage nutzt den ersten verfügbaren
-            self.print_info(f"Primärer Mirror: {mirrors[0]}")
+            self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
             
             
     def run_command(self, command: List[str], description: str, 
-                    allow_fail: bool = False, capture_output: bool = False) -> Tuple[bool, str]:
+                    allow_fail: bool = False, capture_output: bool = False,
+                    custom_env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
         """
         Führt einen Befehl aus und gibt den Status zurück
         
@@ -389,6 +710,7 @@ class GentooUpdater:
             description: Beschreibung für Log
             allow_fail: Wenn True, wird bei Fehler nicht abgebrochen
             capture_output: Wenn True, wird Output zurückgegeben statt gedruckt
+            custom_env: Zusätzliche oder überschreibende Umgebungsvariablen
             
         Returns:
             Tuple (success, output): True bei Erfolg, False bei Fehler und Output
@@ -397,15 +719,21 @@ class GentooUpdater:
         self.logger.debug(f"Führe aus: {' '.join(command)}")
         
         if self.dry_run:
-            self.print_warning(f"DRY-RUN: Würde ausführen: {' '.join(command)}")
+            self.print_warning(_('DRY_RUN_MSG', cmd=' '.join(command)))
             return True, ""
+        
+        # Baue Umgebung auf
+        env = os.environ.copy()
+        if custom_env:
+            env.update(custom_env)
             
         try:
             if capture_output:
                 result = subprocess.run(
                     command,
                     capture_output=True,
-                    text=True
+                    text=True,
+                    env=env
                 )
                 output = result.stdout + result.stderr
                 
@@ -423,7 +751,8 @@ class GentooUpdater:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True,
-                    bufsize=1
+                    bufsize=1,
+                    env=env
                 )
                 
                 output_lines = []
@@ -445,12 +774,12 @@ class GentooUpdater:
                     return False, output
                 
         except FileNotFoundError:
-            self.print_error(f"Befehl nicht gefunden: {command[0]}")
+            self.print_error(_('COMMAND_NOT_FOUND', cmd=command[0]))
             if not allow_fail:
                 sys.exit(1)
             return False, ""
         except Exception as e:
-            self.print_error(f"Fehler bei {description}: {str(e)}")
+            self.print_error(_('RUN_COMMAND_ERROR', desc=description, error=str(e)))
             self.logger.exception("Exception Details:")
             if not allow_fail:
                 sys.exit(1)
@@ -467,15 +796,23 @@ class GentooUpdater:
         # Logge die konfigurierten Mirrors
         self.log_mirrors_info()
         
+        # Stelle sicher, dass Umgebungsvariablen für Mirrors gesetzt sind
+        custom_env = {}
+        if self.custom_mirrors:
+            mirrors_str = ' '.join(self.custom_mirrors)
+            custom_env['GENTOO_MIRRORS'] = mirrors_str
+            self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
+        
         success, _ = self.run_command(
             ["emerge", "--sync"],
             "Synchronisiere Portage-Repositories",
-            allow_fail=True
+            allow_fail=True,
+            custom_env=custom_env if custom_env else None
         )
         
         # Bei Fehler: Quarantine aufräumen und nochmal versuchen
         if not success and retry < 2:
-            self.print_warning("Sync fehlgeschlagen - räume auf und versuche erneut...")
+            self.print_warning(_('SYNC_RETRY'))
             self.cleanup_manifest_quarantine()
             
             # Warte kurz, bevor Retry
@@ -494,7 +831,7 @@ class GentooUpdater:
             subprocess.run(["which", "eix"], check=True, 
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError:
-            self.print_warning("eix ist nicht installiert, überspringe...")
+            self.print_warning(_('EIX_NOT_INSTALLED'))
             return True
             
         success, _ = self.run_command(
@@ -520,10 +857,10 @@ class GentooUpdater:
             )
             
             if "Total: 0 packages" in result.stdout:
-                self.print_success("Keine Updates verfügbar - System ist aktuell!")
+                self.print_success(_('NO_UPDATES'))
                 return False, ""
             else:
-                self.print_info("Updates verfügbar:")
+                self.print_info(_('UPDATES_AVAILABLE'))
                 print(result.stdout)
                 
                 # Prüfe auf kritische Updates
@@ -557,7 +894,7 @@ class GentooUpdater:
         self.print_section("SCHRITT 4: System-Update")
         
         # Prüfe welche Pakete aktualisiert werden (mit --pretend)
-        self.print_info("Analysiere zu aktualisierende Pakete...")
+        self.print_info(_('MODULE_ANALYSIS'))
         try:
             result = subprocess.run(
                 ["emerge", "--update", "--deep", "--newuse", 
@@ -567,7 +904,7 @@ class GentooUpdater:
             )
             kernel_updated = "sys-kernel/" in result.stdout and "-sources" in result.stdout
             if kernel_updated:
-                self.print_warning("Kernel-Update erkannt! Module werden nach dem Update neu gebaut.")
+                self.print_warning(_('KERNEL_UPDATE_DETECTED'))
                 self.stats['kernel_updated'] = True
         except:
             kernel_updated = False
@@ -585,7 +922,7 @@ class GentooUpdater:
             "@world"
         ]
         
-        self.print_info(f"Performance: {jobs} parallele Jobs, Load Average: {load_avg}")
+        self.print_info(_('PERFORMANCE_INFO', jobs=jobs, load=load_avg))
         
         # Führe das eigentliche Update durch
         success, _ = self.run_command(
@@ -604,7 +941,7 @@ class GentooUpdater:
         Returns:
             True wenn Module neu gebaut werden müssen, sonst False
         """
-        self.print_info("Prüfe Kernel-Module Status...")
+        self.print_info(_('CHECK_KERNEL_MODULES'))
         
         try:
             # HAUPTPRÜFUNG: Vergleiche laufenden Kernel mit installiertem Kernel
@@ -639,11 +976,11 @@ class GentooUpdater:
                 
                 # Prüfe ob laufender Kernel != installierter Kernel
                 if selected_kernel and running_kernel not in selected_kernel:
-                    self.print_warning(f"Laufender Kernel ({running_kernel}) != Installierter Kernel ({selected_kernel})")
-                    self.print_info("Module müssen für den neuen Kernel neu gebaut werden")
+                    self.print_warning(_('MODULES_STATUS', running=running_kernel, installed=selected_kernel))
+                    self.print_info(_('MODULES_AFTER_UPDATE'))
                     return True
                 else:
-                    self.print_success("Laufender Kernel ist aktuell - Module müssen nicht neu gebaut werden")
+                    self.print_success(_('MODULES_CURRENT_KERNEL'))
                     return False
             
         except Exception as e:
@@ -660,7 +997,7 @@ class GentooUpdater:
         """
         self.print_section("SCHRITT 5: Kernel-Module neu kompilieren")
         
-        self.print_info("Überprüfe externe Kernel-Module...")
+        self.print_info(_('CHECK_KERNEL_MODULES'))
         
         # Prüfe ob @module-rebuild Set Pakete enthält
         try:
@@ -671,7 +1008,7 @@ class GentooUpdater:
             )
             
             if "Total: 0 packages" in result.stdout:
-                self.print_success("Keine externen Kernel-Module gefunden (oder bereits aktuell)")
+                self.print_success(_('NO_EXTERNAL_MODULES'))
                 return True
             else:
                 self.print_info("Folgende Module werden neu gebaut:")
@@ -688,15 +1025,15 @@ class GentooUpdater:
         
         if success:
             self.stats['modules_rebuilt'] = True
-            self.print_success("Alle Kernel-Module erfolgreich neu gebaut")
-            self.print_info("Tipp: Nach einem Neustart werden die neuen Module verwendet")
+            self.print_success(_('MODULES_REBUILD_SUCCESS'))
+            self.print_info(_('MODULES_REBUILD_TIP'))
         
         return success
     
     def depclean(self) -> bool:
         """Entfernt nicht mehr benötigte Pakete"""
         if not self.config.get('auto_depclean', True):
-            self.print_info("Depclean übersprungen (in Config deaktiviert)")
+            self.print_info(_('DEPCLEAN_SKIPPED'))
             return True
         
         self.print_section("SCHRITT 6: Bereinige verwaiste Pakete")
@@ -725,7 +1062,7 @@ class GentooUpdater:
     def revdep_rebuild(self) -> bool:
         """Baut Pakete mit kaputten Abhängigkeiten neu"""
         if not self.config.get('auto_revdep_rebuild', True):
-            self.print_info("revdep-rebuild übersprungen (in Config deaktiviert)")
+            self.print_info(_('REVDEP_SKIPPED'))
             return True
         
         self.print_section("SCHRITT 7: Prüfe und repariere Abhängigkeiten")
@@ -735,7 +1072,7 @@ class GentooUpdater:
             subprocess.run(["which", "revdep-rebuild"], check=True,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError:
-            self.print_warning("revdep-rebuild nicht gefunden (gentoolkit installieren?)")
+            self.print_warning(_('REVDEP_NOT_FOUND'))
             return True
             
         success, _ = self.run_command(
@@ -761,8 +1098,8 @@ class GentooUpdater:
             print(result.stdout)
             
             # Hinweis für manuelles Update
-            self.print_warning("Kernel-Updates müssen manuell durchgeführt werden!")
-            self.print_info("Schritte für Kernel-Update:")
+            self.print_warning(_('KERNEL_LIST_INFO'))
+            self.print_info(_('KERNEL_UPDATE_STEPS'))
             print("  1. eselect kernel list")
             print("  2. eselect kernel set <nummer>")
             print("  3. cd /usr/src/linux")
@@ -772,7 +1109,7 @@ class GentooUpdater:
             print("  7. grub-mkconfig -o /boot/grub/grub.cfg")
             
         except Exception as e:
-            self.print_warning(f"Kernel-Prüfung fehlgeschlagen: {str(e)}")
+            self.print_warning(_('KERNEL_CHECK_FAILED', error=str(e)))
             
     def check_config_updates(self):
         """Prüft auf Konfigurations-Updates"""
@@ -787,14 +1124,14 @@ class GentooUpdater:
             )
             
             if result.stdout.strip():
-                self.print_warning("Konfigurations-Updates gefunden!")
+                self.print_warning(_('CONFIG_UPDATES_FOUND'))
                 self.print_info("Bitte mit dispatch-conf oder etc-update zusammenführen:")
                 print(result.stdout)
             else:
-                self.print_success("Keine Konfigurations-Updates ausstehend")
+                self.print_success(_('CONFIG_NO_UPDATES'))
                 
         except Exception as e:
-            self.print_warning(f"Konfigurations-Prüfung fehlgeschlagen: {str(e)}")
+            self.print_warning(_('CONFIG_CHECK_FAILED', error=str(e)))
     
     def print_summary(self, duration):
         """Gibt eine Zusammenfassung des Updates aus"""
@@ -1143,11 +1480,54 @@ Umgebungsvariablen:
                        default=None,
                        help='Override emerge --jobs setting')
     
+    parser.add_argument('--lang',
+                       choices=['de', 'en'],
+                       default=None,
+                       help='Language (de/en, default: auto-detect from system locale)')
+    
+    parser.add_argument('--mirrors',
+                       type=str,
+                       default=None,
+                       help='Custom Gentoo mirrors (comma-separated URLs)')
+    
+    parser.add_argument('--repository',
+                       action='store_true',
+                       help='Show GitHub repository information')
+    
+    parser.add_argument('--support',
+                       action='store_true',
+                       help='Show support and issue template links')
+    
     parser.add_argument('--version',
                        action='version',
                        version='Gentoo Updater v1.4.0')
     
     args = parser.parse_args()
+    
+    # Handle --repository flag
+    if args.repository:
+        print(f"\n{Colors.HEADER}{Colors.BOLD}GitHub Repository Information{Colors.ENDC}")
+        print(f"  Repository: {GITHUB_REPO}")
+        print(f"  Issues: {GITHUB_ISSUES}")
+        print(f"  Discussions: {GITHUB_DISCUSSIONS}")
+        print()
+        sys.exit(0)
+    
+    # Handle --support flag
+    if args.support:
+        print(f"\n{Colors.HEADER}{Colors.BOLD}Support & Issue Templates{Colors.ENDC}")
+        print(f"\n{Colors.OKGREEN}Report a Bug:{Colors.ENDC}")
+        print(f"  {GITHUB_ISSUE_TEMPLATE_BUG}")
+        print(f"\n{Colors.OKGREEN}Request a Feature:{Colors.ENDC}")
+        print(f"  {GITHUB_ISSUE_TEMPLATE_FEATURE}")
+        print(f"\n{Colors.OKGREEN}Discussions:{Colors.ENDC}")
+        print(f"  {GITHUB_DISCUSSIONS}")
+        print()
+        sys.exit(0)
+    
+    # Language override via --lang parameter
+    if args.lang:
+        globals()['CURRENT_LANGUAGE'] = args.lang
     
     # Environment-Variablen überschreiben Defaults
     if env_dry_run:
@@ -1164,6 +1544,20 @@ Umgebungsvariablen:
         args.notification_webhook = env_webhook
     if env_parallel:
         args.parallel_jobs = int(env_parallel) if env_parallel else None
+    
+    # Parse custom mirrors if provided (or use German mirrors as default)
+    custom_mirrors = None
+    env_mirrors = os.getenv('GENTOO_UPDATER_MIRRORS')
+    
+    if env_mirrors:
+        # Umgebungsvariable überschreibt CLI
+        custom_mirrors = [m.strip() for m in env_mirrors.split(',') if m.strip()]
+    elif args.mirrors:
+        # CLI Parameter
+        custom_mirrors = [m.strip() for m in args.mirrors.split(',') if m.strip()]
+    else:
+        # Verwende deutsche Mirrors als Default
+        custom_mirrors = DEFAULT_GERMAN_MIRRORS
     
     # Config erstellen wenn gewünscht
     if args.create_config:
@@ -1187,7 +1581,8 @@ Umgebungsvariablen:
             timeout=args.timeout,
             retry_count=args.retry_count,
             webhook_url=args.notification_webhook,
-            max_packages=args.max_packages
+            max_packages=args.max_packages,
+            custom_mirrors=custom_mirrors
         )
         
         # Nur Module neu gebaut werden sollen

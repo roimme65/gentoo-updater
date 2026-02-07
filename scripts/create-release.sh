@@ -314,7 +314,7 @@ print_success "Gepusht zu GitHub"
 # Schritt 7: Erstelle GitHub Release
 print_info "Erstelle GitHub Release..."
 
-# Warte kurz, damit GitHub den Tag registriert
+# Watte kurz, damit GitHub den Tag registriert
 sleep 2
 
 # Erstelle Release mit gh CLI
@@ -333,10 +333,51 @@ else
     print_warning "gh CLI nicht installiert. GitHub Actions erstellt das Release automatisch."
 fi
 
+# Schritt 8: Erstelle GitHub Discussion für neues Release
+print_info "Erstelle GitHub Discussion für neues Release..."
+
+if command -v gh &> /dev/null; then
+    # Lese Release-Notes für die Diskussion
+    release_notes_content=$(cat "$RELEASE_NOTES_FILE" 2>/dev/null || echo "")
+    
+    # Kurze Zusammenfassung aus Release-Notes extrahieren
+    discussion_body="🎉 **v${NEW_VERSION} ist jetzt verfügbar!**
+
+## Release-Informationen
+
+Bitte benutzt diesen Thread um v${NEW_VERSION} zu diskutieren.
+
+📖 **Release-Notes:** https://github.com/roimme65/gentoo-updater/releases/tag/v${NEW_VERSION}
+
+## Feedback & Fragen
+
+- 🐛 **Bugs gefunden?** → [Issue erstellen](https://github.com/roimme65/gentoo-updater/issues/new?template=bug_report.md)
+- 💡 **Neue Features?** → [Feature Request](https://github.com/roimme65/gentoo-updater/issues/new?template=feature_request.md)
+- ❓ **Fragen?** → Antwortet hier in der Diskussion
+
+**Vielen Dank für eure Unterstützung!** 🙏"
+    
+    if gh discussion create \
+        --title "v${NEW_VERSION} - Release Discussion" \
+        --body "$discussion_body" \
+        --category "Announcements" \
+        2>/dev/null; then
+        print_success "GitHub Discussion erstellt: https://github.com/roimme65/gentoo-updater/discussions"
+    else
+        print_warning "GitHub Discussion konnte nicht erstellt werden (optional)."
+        print_info "Du kannst die Diskussion manuell erstellen: https://github.com/roimme65/gentoo-updater/discussions/new"
+    fi
+else
+    print_warning "gh CLI nicht installiert. Discussion kann nicht automatisch erstellt werden."
+fi
+
 # Fertig!
 echo ""
 print_success "🎉 Release v${NEW_VERSION} wurde erfolgreich erstellt!"
 echo ""
 print_info "Das Release ist verfügbar unter:"
 echo "  https://github.com/roimme65/gentoo-updater/releases/tag/v${NEW_VERSION}"
+echo ""
+print_info "Diskussions-Thread:"
+echo "  https://github.com/roimme65/gentoo-updater/discussions"
 echo ""

@@ -1,16 +1,16 @@
 #!/bin/bash
-# Gentoo Updater Installationsskript
+# Gentoo Updater Installation Script
 
 set -e
 
-# Farben für Ausgabe
+# Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Funktionen
+# Functions
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -34,104 +34,108 @@ echo "║           GENTOO UPDATER - INSTALLATION                            ║
 echo "╚════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Prüfe Root-Rechte
+# Check root privileges
 if [ "$EUID" -ne 0 ]; then 
-    print_error "Bitte als root ausführen: sudo ./install.sh"
+    print_error "This script requires root privileges: sudo ./install.sh"
     exit 1
 fi
 
-# Prüfe ob Python 3 installiert ist
-print_info "Prüfe Python 3 Installation..."
+# Check if Python 3 is installed
+print_info "Checking Python 3 installation..."
 if ! command -v python3 &> /dev/null; then
-    print_error "Python 3 ist nicht installiert!"
-    print_info "Installiere mit: emerge --ask dev-lang/python"
+    print_error "Python 3 is not installed!"
+    print_info "Install with: emerge --ask dev-lang/python"
     exit 1
 fi
 
 PYTHON_VERSION=$(python3 --version)
-print_success "Gefunden: $PYTHON_VERSION"
+print_success "Found: $PYTHON_VERSION"
 
-# Prüfe ob wir auf Gentoo sind
-print_info "Prüfe Gentoo Linux..."
+# Check if running on Gentoo
+print_info "Checking Gentoo Linux..."
 if [ ! -f /etc/gentoo-release ]; then
-    print_warning "Dies scheint kein Gentoo Linux zu sein!"
-    read -p "Trotzdem fortfahren? [y/N] " -n 1 -r
+    print_warning "This doesn't appear to be Gentoo Linux!"
+    read -p "Continue anyway? [y/N] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
 else
-    print_success "Gentoo Linux erkannt: $(cat /etc/gentoo-release)"
+    print_success "Gentoo Linux detected: $(cat /etc/gentoo-release)"
 fi
 
-# Installiere Skript
-print_info "Installiere gentoo-updater..."
+# Install script
+print_info "Installing gentoo-updater..."
 INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="gentoo-updater"
 
-# Kopiere Skript
+# Copy script
 cp gentoo-updater.py "$INSTALL_DIR/$SCRIPT_NAME"
 chmod +x "$INSTALL_DIR/$SCRIPT_NAME"
 
-print_success "Installiert nach: $INSTALL_DIR/$SCRIPT_NAME"
+print_success "Installed to: $INSTALL_DIR/$SCRIPT_NAME"
 
-# Prüfe optionale Abhängigkeiten
+# Check optional dependencies
 echo ""
-print_info "Prüfe optionale Abhängigkeiten..."
+print_info "Checking optional dependencies..."
 
 # eix
 if ! command -v eix &> /dev/null; then
-    print_warning "eix ist nicht installiert (empfohlen für schnellere Paket-Suche)"
-    echo "          Installieren mit: emerge --ask app-portage/eix"
+    print_warning "eix is not installed (recommended for faster package searches)"
+    echo "          Install with: emerge --ask app-portage/eix"
 else
-    print_success "eix ist installiert"
+    print_success "eix is installed"
 fi
 
 # gentoolkit (revdep-rebuild)
 if ! command -v revdep-rebuild &> /dev/null; then
-    print_warning "gentoolkit ist nicht installiert (empfohlen für revdep-rebuild)"
-    echo "          Installieren mit: emerge --ask app-portage/gentoolkit"
+    print_warning "gentoolkit is not installed (recommended for revdep-rebuild)"
+    echo "          Install with: emerge --ask app-portage/gentoolkit"
 else
-    print_success "gentoolkit ist installiert"
+    print_success "gentoolkit is installed"
 fi
 
-# Fertig
+# Done
 echo ""
 echo "╔════════════════════════════════════════════════════════════════════╗"
-echo "║           INSTALLATION ABGESCHLOSSEN                               ║"
+echo "║           INSTALLATION COMPLETED                                   ║"
 echo "╚════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-print_success "gentoo-updater wurde erfolgreich installiert!"
+print_success "gentoo-updater has been successfully installed!"
 echo ""
-print_info "Verwendung:"
-echo "  sudo gentoo-updater                          # Vollständiges System-Update"
-echo "  sudo gentoo-updater --dry-run                # Test-Modus"
-echo "  sudo gentoo-updater --log-level DEBUG        # Debug-Ausgabe"
-echo "  sudo gentoo-updater --only-sync              # Nur Repository-Sync"
-echo "  sudo gentoo-updater --skip-cleanup           # Überspringe depclean"
-echo "  sudo gentoo-updater --max-packages 50        # Limit: max. 50 Pakete"
-echo "  GENTOO_UPDATER_DRY_RUN=true gentoo-updater  # Dry-Run via Env-Variable"
-echo "  sudo gentoo-updater --help                   # Detaillierte Hilfe"
+print_info "Usage examples:"
+echo "  sudo gentoo-updater                          # Full system update"
+echo "  sudo gentoo-updater --dry-run                # Test mode"
+echo "  sudo gentoo-updater --lang de                # Use German language"
+echo "  sudo gentoo-updater --log-level DEBUG        # Debug output"
+echo "  sudo gentoo-updater --only-sync              # Repository sync only"
+echo "  sudo gentoo-updater --skip-cleanup           # Skip depclean"
+echo "  sudo gentoo-updater --mirrors 'url1 url2'    # Custom mirrors"
+echo "  sudo gentoo-updater --max-packages 50        # Limit: max 50 packages"
+echo "  sudo gentoo-updater --repository             # Show GitHub repository info"
+echo "  sudo gentoo-updater --support                # Show support & issue templates"
+echo "  GENTOO_UPDATER_DRY_RUN=true gentoo-updater  # Dry-run via environment variable"
+echo "  sudo gentoo-updater --help                   # Detailed help"
 echo ""
 
-# Frage ob optional dependencies installiert werden sollen
+# Ask about optional dependencies
 if ! command -v eix &> /dev/null || ! command -v revdep-rebuild &> /dev/null; then
     echo ""
-    read -p "Möchten Sie die empfohlenen Pakete jetzt installieren? [y/N] " -n 1 -r
+    read -p "Would you like to install the recommended packages now? [y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         if ! command -v eix &> /dev/null; then
-            print_info "Installiere eix..."
+            print_info "Installing eix..."
             emerge --ask app-portage/eix
         fi
         if ! command -v revdep-rebuild &> /dev/null; then
-            print_info "Installiere gentoolkit..."
+            print_info "Installing gentoolkit..."
             emerge --ask app-portage/gentoolkit
         fi
     fi
 fi
 
 echo ""
-print_info "Sie können gentoo-updater jetzt mit 'sudo gentoo-updater' ausführen"
+print_info "You can now run gentoo-updater with: sudo gentoo-updater"
 echo ""
