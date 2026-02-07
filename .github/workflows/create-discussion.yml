@@ -1,0 +1,60 @@
+name: Create Release Discussion
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-discussion:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      discussions: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Discussion from Release Tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Extrahiere Version aus Tag
+          VERSION="${GITHUB_REF#refs/tags/}"
+          
+          # Hole Release-Notes wenn vorhanden
+          if [ -f "releases/${VERSION}.md" ]; then
+            BODY=$(cat "releases/${VERSION}.md")
+          else
+            BODY="🎉 Release ${VERSION} ist verfügbar!
+
+Bitte testen und Feedback geben.
+
+📖 Release-Notes: https://github.com/${GH_REPO}/releases/tag/${VERSION}"
+          fi
+          
+          # Versuche mit gh CLI Discussion zu erstellen (fallback auf REST API)
+          if gh discussion list --repo "${GH_REPO}" >/dev/null 2>&1; then
+            # gh discussion unterstützt create mit category
+            gh discussion create \
+              --title "${VERSION} - Release Discussion" \
+              --body "${BODY}" \
+              --category "Announcements" \
+              --repo "${GH_REPO}" 2>/dev/null && {
+              echo "✅ Discussion für ${VERSION} erstellt!"
+              exit 0
+            }
+          fi
+          
+          # Fallback: Ohne Kategorie versuchen
+          if gh discussion create \
+            --title "${VERSION} - Release Discussion" \
+            --body "${BODY}" \
+            --repo "${GH_REPO}" 2>/dev/null; then
+            echo "✅ Discussion für ${VERSION} erstellt (ohne Kategorie)!"
+          else
+            echo "⚠️ Discussion konnte nicht erstellt werden (optional)"
+            echo "Du kannst eine Manual erstellen: https://github.com/${GH_REPO}/discussions/new"
+          fi

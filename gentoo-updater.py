@@ -807,7 +807,7 @@ class GentooUpdater:
         """
         self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
         
-        # Logge die konfigurierten Mirrors
+        # Logge die konfigurierten Mirrors (ignoriere Output)
         self.log_mirrors_info()
         
         # Aktualisiere make.conf und repos.conf mit Custom Mirrors wenn vorhanden
@@ -895,7 +895,7 @@ class GentooUpdater:
                 self.print_warning("Konnte keine repos.conf Datei finden - nutze Standard-Sync")
         
         try:
-            success, _ = self.run_command(
+            success, output = self.run_command(
                 ["emerge", "--sync"],
                 "Synchronisiere Portage-Repositories",
                 allow_fail=True
@@ -934,7 +934,7 @@ class GentooUpdater:
             self.print_warning(_('EIX_NOT_INSTALLED'))
             return True
             
-        success, _ = self.run_command(
+        success, output = self.run_command(
             ["eix-update"],
             "Aktualisiere eix-Datenbank"
         )
@@ -1025,7 +1025,7 @@ class GentooUpdater:
         self.print_info(_('PERFORMANCE_INFO', jobs=jobs, load=load_avg))
         
         # Führe das eigentliche Update durch
-        success, _ = self.run_command(
+        success, output = self.run_command(
             emerge_cmd,
             "Aktualisiere System-Pakete"
         )
@@ -1117,7 +1117,7 @@ class GentooUpdater:
             self.print_warning(f"Konnte Module nicht prüfen: {str(e)}")
         
         # Baue Module neu
-        success, _ = self.run_command(
+        success, output = self.run_command(
             ["emerge", "@module-rebuild"],
             "Kompiliere Kernel-Module neu",
             allow_fail=True
@@ -1151,7 +1151,7 @@ class GentooUpdater:
             print(output)
             
             # Jetzt tatsächlich entfernen
-            success, _ = self.run_command(
+            success, output = self.run_command(
                 ["emerge", "--depclean", "--ask=n"],
                 "Entferne nicht mehr benötigte Pakete",
                 allow_fail=True
@@ -1175,7 +1175,7 @@ class GentooUpdater:
             self.print_warning(_('REVDEP_NOT_FOUND'))
             return True
             
-        success, _ = self.run_command(
+        success, output = self.run_command(
             ["revdep-rebuild"],
             "Repariere kaputte Abhängigkeiten",
             allow_fail=True
