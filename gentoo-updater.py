@@ -285,6 +285,22 @@ TRANSLATIONS = {
         'de': 'Anzahl zu aktualisierender Pakete auf {max} begrenzt',
         'en': 'Limiting packages to update to {max}'
     },
+    'MIRRORSELECT_AVAILABLE': {
+        'de': '✓ mirrorselect für deutsche Mirror-Auswahl verfügbar',
+        'en': '✓ mirrorselect for German mirror selection available'
+    },
+    'MIRRORSELECT_NOT_INSTALLED': {
+        'de': '⚠ mirrorselect ist nicht installiert',
+        'en': '⚠ mirrorselect is not installed'
+    },
+    'MIRRORSELECT_INSTALL_TIP': {
+        'de': '  Tipp: sudo emerge -a app-portage/mirrorselect',
+        'en': '  Tip: sudo emerge -a app-portage/mirrorselect'
+    },
+    'MIRRORSELECT_BENEFIT': {
+        'de': '  Dies ermöglicht automatische Auswahl des schnellsten deutschen Mirrors',
+        'en': '  This enables automatic selection of the fastest German mirrors'
+    },
 }
 
 
@@ -328,10 +344,24 @@ GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issu
 # German Mirrors (Default)
 # ========================
 
-# Standard Gentoo Mirrors (offizielle, zuverlässige Server)
-DEFAULT_GERMAN_MIRRORS = [
-    'rsync://rsync.gentoo.org/gentoo-portage',      # Official Gentoo - Primary
+# Deutsche und europäische Gentoo Mirrors - DISTFILES (Quellcode-Downloads)
+# Nach Geschwindigkeit/Zuverlässigkeit sortiert (RWTH Aachen ist bei Geschwindigkeit #1)
+DEFAULT_GERMAN_MIRRORS_DISTFILES = [
+    'https://ftp.halifax.rwth-aachen.de/gentoo/',           # 🥇 RWTH Aachen - sehr schnell
+    'https://mirror.init7.net/gentoo/',                      # Init7 - Schweiz
+    'http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/', # Ruhr-Uni Bochum
+    'https://mirror.netcologne.de/gentoo-distfiles/',        # NetCologne - Deutschland (Köln)
 ]
+
+# Deutsche und europäische Gentoo Mirrors - RSYNC (Portage-Tree Sync)
+# Für emaint sync -a oder emerge --sync
+DEFAULT_GERMAN_MIRRORS_RSYNC = [
+    'rsync://mirror.netcologne.de/gentoo/',                  # NetCologne Rsync
+    'rsync://rsync.gentoo.org/gentoo-portage',              # Official Gentoo - Fallback
+]
+
+# Unified list (für Kompatibilität und einfache Verwendung - hauptsächlich Distfiles)
+DEFAULT_GERMAN_MIRRORS = DEFAULT_GERMAN_MIRRORS_DISTFILES
 
 CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
 
@@ -679,36 +709,140 @@ class GentooUpdater:
         
         return mirrors
     
-    def log_mirrors_info(self):
-        """Loggt die tatsächlich verwendeten Gentoo Mirrors (nicht aus make.conf)"""
-        # Zeige die tatsächlich verwendeten Mirrors
-        if self.custom_mirrors:
-            # Wenn custom_mirrors gesetzt, diese verwenden
-            self.print_info(_('SYNC_MIRROR_INFO'))
-            for i, mirror in enumerate(self.custom_mirrors, 1):
-                print(f"  {i}. {mirror}")
-                self.logger.info(f"Mirror {i}: {mirror}")
+    def auto_select_best_mirror_distfiles(self) -> Optional[List[str]]:
+        """Nutzt mirrorselect um die schnellsten deutschen Distfile-Mirror automatisch zu wählen
+        
+        Befehl: mirrorselect -i -o
+        Öffnet eine ncurses-UI zur interaktiven Auswahl deutscher Distfile-Mirror
+        
+        Returns:
+            Liste der schnellsten Mirror URLs oder None wenn mirrorselect nicht verfügbar
+        """
+        self.print_info("Öffne mirrorselect zur Auswahl deutscher Distfile-Mirror...")
+        self.print_info("(Leertaste zum Auswählen, Enter zum Bestätigen)")
+        
+        try:
+            # Prüfe ob mirrorselect installiert ist
+            which_result = subprocess.run(
+                ["which", "mirrorselect"],
+                capture_output=True,
+                timeout=5
+            )
             
-            if self.custom_mirrors == DEFAULT_GERMAN_MIRRORS:
-                self.print_success("🇩🇪 Verwende deutsche Gentoo Mirrors als Standard!")
+            if which_result.returncode != 0:
+                self.print_info("mirrorselect nicht verfügbar - verwende Standard-Mirror")
+                return None
             
-            self.logger.info(f"Insgesamt {len(self.custom_mirrors)} Mirror(s) konfiguriert (Custom)")
-            self.stats['used_mirror'] = self.custom_mirrors[0]
-            self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=self.custom_mirrors[0]))
-        else:
-            # Fallback: von make.conf lesen
-            mirrors = self.get_gentoo_mirrors()
+            # Führe mirrorselect für Distfiles aus: -i (interaktiv), -o (output)
+            # Dies öffnet eine ncurses-Liste zur Auswahl deutscher Distfile-Mirror
+            result = subprocess.run(
+                ["mirrorselect", "-i", "-o"],  # -i = interaktiv mit UI, -o = output format
+                timeout=120  # Mehr Zeit für interaktive Auswahl durch Benutzer
+            )
             
-            if mirrors:
-                self.print_info(_('SYNC_MIRROR_INFO'))
-                for i, mirror in enumerate(mirrors, 1):
-                    print(f"  {i}. {mirror}")
-                    self.logger.info(f"Mirror {i}: {mirror}")
-                self.logger.info(f"Insgesamt {len(mirrors)} Mirror(s) konfiguriert (aus make.conf)")
-                self.stats['used_mirror'] = mirrors[0]
-                self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
+            if result.returncode == 0:
+                # Lese die aktualisierte make.conf
+                make_conf_path = '/etc/portage/make.conf'
+                if os.path.exists(make_conf_path):
+                    with open(make_conf_path, 'r') as f:
+                        content = f.read()
+                    # Extrahiere GENTOO_MIRRORS
+                    pattern = r'GENTOO_MIRRORS\s*=\s*"([^"]+)"'
+                    match = re.search(pattern, content)
+                    if match:
+                        mirrors_str = match.group(1)
+                        mirror_urls = [m.strip() for m in mirrors_str.split() if m.strip()]
+                        if mirror_urls:
+                            self.print_success(f"Mirror ausgewählt: {', '.join(mirror_urls[:2])}...")
+                            return mirror_urls
+                
             else:
-                self.print_warning(_('NO_MIRRORS'))
+                if result.returncode == 130:  # Ctrl+C
+                    self.print_info("Mirror-Auswahl abgebrochen")
+                else:
+                    self.print_warning(f"mirrorselect fehlgeschlagen (Code: {result.returncode})")
+                
+        except subprocess.TimeoutExpired:
+            self.print_warning("mirrorselect Timeout - verwende Standard-Mirror")
+        except Exception as e:
+            self.print_warning(f"Fehler bei mirrorselect: {e}")
+        
+        return None
+    
+    def auto_select_best_mirror_rsync(self) -> Optional[str]:
+        """Nutzt mirrorselect um den schnellsten deutschen Rsync-Mirror automatisch zu wählen
+        
+        Befehl: mirrorselect -i -r
+        Öffnet eine ncurses-UI zur interaktiven Auswahl eines Rsync-Mirror
+        
+        Returns:
+            Schnellster Rsync-Mirror URL oder None wenn mirrorselect nicht verfügbar
+        """
+        self.print_info("Öffne mirrorselect zur Auswahl des deutschen Rsync-Mirror...")
+        self.print_info("(Leertaste zum Auswählen, Enter zum Bestätigen)")
+        
+        try:
+            # Prüfe ob mirrorselect installiert ist
+            which_result = subprocess.run(
+                ["which", "mirrorselect"],
+                capture_output=True,
+                timeout=5
+            )
+            
+            if which_result.returncode != 0:
+                return None
+            
+            # Führe mirrorselect für Rsync aus: -i (interaktiv), -r (rsync only)
+            result = subprocess.run(
+                ["mirrorselect", "-i", "-r"],  # -i = interaktiv, -r = rsync only
+                timeout=120
+            )
+            
+            if result.returncode == 0:
+                # Lese die aktualisierte make.conf für sync-uri
+                repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
+                if os.path.exists(repos_conf_path):
+                    with open(repos_conf_path, 'r') as f:
+                        content = f.read()
+                    # Extrahiere sync-uri
+                    match = re.search(r'sync-uri\s*=\s*([^\n]+)', content)
+                    if match:
+                        mirror_url = match.group(1).strip()
+                        if mirror_url:
+                            self.print_success(f"Rsync-Mirror ausgewählt: {mirror_url}")
+                            return mirror_url
+            
+            elif result.returncode == 130:  # Ctrl+C
+                self.print_info("Rsync-Mirror-Auswahl abgebrochen")
+            
+        except subprocess.TimeoutExpired:
+            self.print_warning("mirrorselect Rsync-Auswahl Timeout")
+        except Exception as e:
+            self.print_warning(f"Fehler bei mirrorselect Rsync-Auswahl: {e}")
+        
+        return None
+    
+    def log_mirrors_info(self):
+        """Loggt die tatsächlich verwendeten Gentoo Mirrors"""
+        # Zeige Distfiles Mirror
+        self.print_info(_('SYNC_MIRROR_INFO'))
+        
+        # Prüfe ob custom_mirrors oder defaults verwendet werden
+        if self.custom_mirrors and self.custom_mirrors == DEFAULT_GERMAN_MIRRORS_DISTFILES:
+            self.print_success("🇩🇪 Verwende deutsche Gentoo Mirrors als Standard!")
+        
+        # Gibt GENTOO_MIRRORS aus  
+        mirrors = self.get_gentoo_mirrors()
+        
+        if mirrors:
+            for i, mirror in enumerate(mirrors, 1):
+                print(f"  {i}. {mirror}")
+                self.logger.info(f"Distfile Mirror {i}: {mirror}")
+            self.logger.info(f"Insgesamt {len(mirrors)} Distfile-Mirror(s) konfiguriert")
+            self.stats['used_mirror'] = mirrors[0]
+            self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
+        else:
+            self.print_warning(_('NO_MIRRORS'))
             
             
     def run_command(self, command: List[str], description: str, 
@@ -806,77 +940,69 @@ class GentooUpdater:
         """
         self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
         
-        # Logge die konfigurierten Mirrors (ignoriere Output)
+        # Versuche erst, die schnellsten Mirror mit mirrorselect zu wählen (nur beim ersten Versuch)
+        # WICHTIG: -i öffnet UI nur wenn Terminal interaktiv ist, sonst automatisch fallback
+        best_mirrors_distfiles = None
+        best_mirror_rsync = None
+        
+        if retry == 1 and mirror_index == 0 and not self.custom_mirrors:
+            # Versuche Distfiles Mirror auszuwählen
+            try:
+                best_mirrors_distfiles = self.auto_select_best_mirror_distfiles()
+            except (EOFError, KeyboardInterrupt):
+                # Benutzer hat abgebrochen - verwende Standard
+                self.print_info("Verwende Standard-Mirror statt mirrorselect")
+            except Exception:
+                pass
+        
+        # Verwende beste Mirror wenn vorhanden, sonst Fallback
+        mirrors_to_use = None
+        if best_mirrors_distfiles:
+            mirrors_to_use = best_mirrors_distfiles
+            self.print_success(f"Verwende automatisch ausgewählte Mirror")
+        elif self.custom_mirrors:
+            mirrors_to_use = self.custom_mirrors
+        else:
+            mirrors_to_use = DEFAULT_GERMAN_MIRRORS_DISTFILES
+        
+        # Logge die konfigurierten Mirrors
         self.log_mirrors_info()
         
-        # Aktualisiere make.conf und repos.conf mit Custom Mirrors wenn vorhanden
-        if self.custom_mirrors:
-            mirrors_str = ' '.join(self.custom_mirrors)
-            self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
-            
-            # Wähle den aktuellen Mirror basierend auf mirror_index
-            current_mirror = self.custom_mirrors[mirror_index] if mirror_index < len(self.custom_mirrors) else self.custom_mirrors[0]
-            self.print_info(f"Primärer Mirror ({mirror_index+1}/{len(self.custom_mirrors)}): {current_mirror}")
-            
-            # Aktualisiere repos.conf mit aktuellem Mirror
-            repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
-            if os.path.exists(repos_conf_path):
-                try:
-                    repos_conf_content = f"""[DEFAULT]
-main-repo = gentoo
-
-[gentoo]
-location = /var/db/repos/gentoo
-sync-type = rsync
-sync-uri = {current_mirror.rstrip('/')}
-auto-sync = yes
-"""
-                    with open(repos_conf_path, 'w') as f:
-                        f.write(repos_conf_content)
-                    self.print_info(f"repos.conf aktualisiert mit Mirror: {current_mirror}")
-                except Exception as e:
-                    self.print_warning(f"Konnte repos.conf nicht aktualisieren: {e}")
-            
-            # Aktualisiere make.conf mit Custom Mirrors
-            make_conf_path = '/etc/portage/make.conf'
-            if os.path.exists(make_conf_path):
-                try:
-                    with open(make_conf_path, 'r') as f:
-                        make_conf_content = f.read()
-                    
-                    # Ersetze GENTOO_MIRRORS oder füge sie hinzu
-                    mirrors_value = ' '.join(self.custom_mirrors)
-                    if 'GENTOO_MIRRORS=' in make_conf_content:
-                        # Ersetze existierende GENTOO_MIRRORS
-                        updated_content = re.sub(
-                            r'GENTOO_MIRRORS\s*=\s*"[^"]*"',
-                            f'GENTOO_MIRRORS="{mirrors_value}"',
-                            make_conf_content
-                        )
-                    else:
-                        # Füge neue Zeile am Ende hinzu
-                        updated_content = make_conf_content.rstrip() + f'\n\n# Deutsche Gentoo Mirrors (Standardwert)\nGENTOO_MIRRORS="{mirrors_value}"\n'
-                    
-                    if updated_content != make_conf_content:
-                        with open(make_conf_path, 'w') as f:
-                            f.write(updated_content)
-                        self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
-                except Exception as e:
-                    self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
+        # Aktualisiere make.conf mit Distfiles Mirror
+        make_conf_path = '/etc/portage/make.conf'
+        if mirrors_to_use and os.path.exists(make_conf_path):
+            try:
+                with open(make_conf_path, 'r') as f:
+                    make_conf_content = f.read()
+                
+                # Ersetze GENTOO_MIRRORS oder füge sie hinzu
+                mirrors_value = ' '.join(mirrors_to_use)
+                if 'GENTOO_MIRRORS=' in make_conf_content:
+                    # Ersetze existierende GENTOO_MIRRORS
+                    updated_content = re.sub(
+                        r'GENTOO_MIRRORS\s*=\s*"[^"]*"',
+                        f'GENTOO_MIRRORS="{mirrors_value}"',
+                        make_conf_content
+                    )
+                else:
+                    # Füge neue Zeile am Ende hinzu
+                    updated_content = make_conf_content.rstrip() + f'\n\n# Deutsche Gentoo Mirrors (Distfiles)\nGENTOO_MIRRORS="{mirrors_value}"\n'
+                
+                if updated_content != make_conf_content:
+                    with open(make_conf_path, 'w') as f:
+                        f.write(updated_content)
+                    self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
+            except Exception as e:
+                self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
         
-        # Verwende Standard-Sync mit repos.conf
+        # Verwende Standard-Sync mit repos.conf (Portage-Tree über rsync)
         success, output = self.run_command(
             ["emerge", "--sync"],
-            "Synchronisiere Portage-Repositories",
+            "Synchronisiere Portage-Repositories mit emerge --sync",
             allow_fail=True
         )
         
-        # Bei Fehler: Versuche nächsten deutschen Mirror
-        if not success and mirror_index < len(self.custom_mirrors) - 1:
-            self.print_warning(f"Mirror {mirror_index + 1} fehlgeschlagen, versuche nächsten deutschen Mirror...")
-            return self.sync_repositories(retry=retry, mirror_index=mirror_index + 1)
-        
-        # Bei Fehler: Quarantine aufräumen und normalem Retry
+        # Bei Fehler: Quarantine aufräumen und Retry
         if not success and retry < 2:
             self.print_warning(_('SYNC_RETRY'))
             self.cleanup_manifest_quarantine()
@@ -1339,7 +1465,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.23                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.24                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1349,6 +1475,16 @@ Details siehe: {self.log_file}
             print(f"{Colors.OKCYAN}🔄 Retry-Count: {self.retry_count}{Colors.ENDC}")
         if self.max_packages:
             print(f"{Colors.OKCYAN}📦 Max Packages: {self.max_packages}{Colors.ENDC}")
+        
+        # Prüfe ob mirrorselect verfügbar ist und informiere Benutzer
+        try:
+            subprocess.run(["which", "mirrorselect"], check=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
+            print(f"{Colors.OKGREEN}{_('MIRRORSELECT_AVAILABLE')}{Colors.ENDC}")
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            print(f"{Colors.WARNING}{_('MIRRORSELECT_NOT_INSTALLED')}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{_('MIRRORSELECT_INSTALL_TIP')}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{_('MIRRORSELECT_BENEFIT')}{Colors.ENDC}\n")
         
         try:
             self.check_root_privileges()
@@ -1455,11 +1591,28 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Beispiele:
-  sudo gentoo-updater                    # Vollständiges System-Update
+  sudo gentoo-updater                    # Vollständiges System-Update mit deutschen Mirrors
   sudo gentoo-updater --dry-run          # Zeige was gemacht würde
   sudo gentoo-updater --only-sync        # Nur Repository-Sync
   sudo gentoo-updater --skip-cleanup     # Überspringe depclean
   GENTOO_UPDATER_DRY_RUN=true gentoo-updater  # Env-Var für Dry-Run
+
+Deutsche Mirrors:
+  Das Skript nutzt standardmäßig deutsche/europäische Mirrors für bessere Geschwindigkeit:
+  
+  Distfiles (Quellcode):
+    - 🥇 RWTH Aachen (https://ftp.halifax.rwth-aachen.de/gentoo/) - sehr schnell
+    - Init7 Schweiz (https://mirror.init7.net/gentoo/)
+    - Ruhr-Universität Bochum (http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/)
+    - NetCologne Köln (https://mirror.netcologne.de/gentoo-distfiles/)
+  
+  Mit mirrorselect interaktiv auswählen:
+    sudo emerge -av app-portage/mirrorselect  # Eine einzelne Installation
+    gentoo-updater wird mirrorselect automatisch starten wenn verfügbar!
+  
+  Manuell konfigurieren:
+    - Distfiles: /etc/portage/make.conf (GENTOO_MIRRORS)
+    - Portage-Tree: /etc/portage/repos.conf/gentoo.conf (sync-uri)
 
 Umgebungsvariablen:
   GENTOO_UPDATER_DRY_RUN=true            # Aktiviere Dry-Run
@@ -1469,6 +1622,7 @@ Umgebungsvariablen:
   GENTOO_UPDATER_RETRY_COUNT=3           # Wiederholung bei Fehler
   GENTOO_UPDATER_WEBHOOK=URL             # Webhook-URL
   GENTOO_UPDATER_PARALLEL_JOBS=4         # Parallele Jobs
+  GENTOO_UPDATER_MIRRORS=URL1,URL2       # Custom Mirror (komma-getrennt)
         """
     )
     
@@ -1556,6 +1710,10 @@ Umgebungsvariablen:
                        default=None,
                        help='Custom Gentoo mirrors (comma-separated URLs)')
     
+    parser.add_argument('--use-mirrorselect',
+                       action='store_true',
+                       help='Nutze mirrorselect für automatische Auswahl des schnellsten Mirrors')
+    
     parser.add_argument('--repository',
                        action='store_true',
                        help='Show GitHub repository information')
@@ -1566,7 +1724,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.23')
+                       version='Gentoo Updater v1.4.24')
     
     args = parser.parse_args()
     
