@@ -799,23 +799,47 @@ class GentooUpdater:
                 sys.exit(1)
             return False, str(e)
             
-    def sync_repositories(self, retry: int = 1) -> bool:
-        """Synchronisiert die Portage-Repositories
+    def sync_repositories(self, retry: int = 1, mirror_index: int = 0) -> bool:
+        """Synchronisiert die Portage-Repositories mit Mirror-Fallback
         
         Args:
             retry: Anzahl der Wiederholungsversuche bei Manifest-Fehler
+            mirror_index: Index des zu verwendenden German Mirror (0-2)
         """
         self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
         
         # Logge die konfigurierten Mirrors (ignoriere Output)
         self.log_mirrors_info()
         
-        # Aktualisiere make.conf mit Custom Mirrors wenn vorhanden
+        # Aktualisiere make.conf und repos.conf mit Custom Mirrors wenn vorhanden
         if self.custom_mirrors:
             mirrors_str = ' '.join(self.custom_mirrors)
             self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
             
-            # Aktualisiere /etc/portage/make.conf
+            # Wähle den aktuellen Mirror basierend auf mirror_index
+            current_mirror = self.custom_mirrors[mirror_index] if mirror_index < len(self.custom_mirrors) else self.custom_mirrors[0]
+            self.print_info(f"Primärer Mirror ({mirror_index+1}/{len(self.custom_mirrors)}): {current_mirror}")
+            
+            # Aktualisiere repos.conf mit aktuellem Mirror
+            repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
+            if os.path.exists(repos_conf_path):
+                try:
+                    repos_conf_content = f"""[DEFAULT]
+main-repo = gentoo
+
+[gentoo]
+location = /var/db/repos/gentoo
+sync-type = rsync
+sync-uri = {current_mirror.rstrip('/')}
+auto-sync = yes
+"""
+                    with open(repos_conf_path, 'w') as f:
+                        f.write(repos_conf_content)
+                    self.print_info(f"repos.conf aktualisiert mit Mirror: {current_mirror}")
+                except Exception as e:
+                    self.print_warning(f"Konnte repos.conf nicht aktualisieren: {e}")
+            
+            # Aktualisiere make.conf mit Custom Mirrors
             make_conf_path = '/etc/portage/make.conf'
             if os.path.exists(make_conf_path):
                 try:
@@ -842,14 +866,19 @@ class GentooUpdater:
                 except Exception as e:
                     self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
         
-        # Verwende Standard-Sync mit GENTOO_MIRRORS aus make.conf
+        # Verwende Standard-Sync mit repos.conf
         success, output = self.run_command(
             ["emerge", "--sync"],
             "Synchronisiere Portage-Repositories",
             allow_fail=True
         )
         
-        # Bei Fehler: Quarantine aufräumen und nochmal versuchen
+        # Bei Fehler: Versuche nächsten deutschen Mirror
+        if not success and mirror_index < len(self.custom_mirrors) - 1:
+            self.print_warning(f"Mirror {mirror_index + 1} fehlgeschlagen, versuche nächsten deutschen Mirror...")
+            return self.sync_repositories(retry=retry, mirror_index=mirror_index + 1)
+        
+        # Bei Fehler: Quarantine aufräumen und normalem Retry
         if not success and retry < 2:
             self.print_warning(_('SYNC_RETRY'))
             self.cleanup_manifest_quarantine()
@@ -857,7 +886,7 @@ class GentooUpdater:
             # Warte kurz, bevor Retry
             time.sleep(2)
             
-            return self.sync_repositories(retry=2)
+            return self.sync_repositories(retry=2, mirror_index=0)
         
         return success
         
@@ -1312,7 +1341,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.19                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.20                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1539,7 +1568,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.19')
+                       version='Gentoo Updater v1.4.20')
     
     args = parser.parse_args()
     
