@@ -682,22 +682,35 @@ class GentooUpdater:
         return mirrors
     
     def log_mirrors_info(self):
-        """Loggt die konfigurierten Gentoo Mirrors"""
-        mirrors = self.get_gentoo_mirrors()
-        
-        if mirrors:
+        """Loggt die tatsächlich verwendeten Gentoo Mirrors (nicht aus make.conf)"""
+        # Zeige die tatsächlich verwendeten Mirrors
+        if self.custom_mirrors:
+            # Wenn custom_mirrors gesetzt, diese verwenden
             self.print_info(_('SYNC_MIRROR_INFO'))
-            for i, mirror in enumerate(mirrors, 1):
+            for i, mirror in enumerate(self.custom_mirrors, 1):
                 print(f"  {i}. {mirror}")
                 self.logger.info(f"Mirror {i}: {mirror}")
-            self.logger.info(f"Insgesamt {len(mirrors)} Mirror(s) konfiguriert")
+            
+            if self.custom_mirrors == DEFAULT_GERMAN_MIRRORS:
+                self.print_success("🇩🇪 Verwende deutsche Gentoo Mirrors als Standard!")
+            
+            self.logger.info(f"Insgesamt {len(self.custom_mirrors)} Mirror(s) konfiguriert (Custom)")
+            self.stats['used_mirror'] = self.custom_mirrors[0]
+            self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=self.custom_mirrors[0]))
         else:
-            self.print_warning(_('NO_MIRRORS'))
-        
-        # Versuche den primären Mirror zu untersuchen (der erste in der Liste)
-        if mirrors:
-            self.stats['used_mirror'] = mirrors[0]  # Portage nutzt den ersten verfügbaren
-            self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
+            # Fallback: von make.conf lesen
+            mirrors = self.get_gentoo_mirrors()
+            
+            if mirrors:
+                self.print_info(_('SYNC_MIRROR_INFO'))
+                for i, mirror in enumerate(mirrors, 1):
+                    print(f"  {i}. {mirror}")
+                    self.logger.info(f"Mirror {i}: {mirror}")
+                self.logger.info(f"Insgesamt {len(mirrors)} Mirror(s) konfiguriert (aus make.conf)")
+                self.stats['used_mirror'] = mirrors[0]
+                self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
+            else:
+                self.print_warning(_('NO_MIRRORS'))
             
             
     def run_command(self, command: List[str], description: str, 
@@ -797,7 +810,8 @@ class GentooUpdater:
         # Logge die konfigurierten Mirrors
         self.log_mirrors_info()
         
-        # Aktualisiere repos.conf mit Custom Mirrors wenn vorhanden
+        # Aktualisiere make.conf und repos.conf mit Custom Mirrors wenn vorhanden
+        make_conf_updated = False
         repos_conf_updated = False
         repos_conf_backup = None
         repos_conf_path = None
@@ -805,6 +819,34 @@ class GentooUpdater:
         if self.custom_mirrors:
             mirrors_str = ' '.join(self.custom_mirrors)
             self.print_info(f"Verwende Custom Mirrors: {mirrors_str}")
+            
+            # Aktualisiere auch /etc/portage/make.conf
+            make_conf_path = '/etc/portage/make.conf'
+            if os.path.exists(make_conf_path):
+                try:
+                    with open(make_conf_path, 'r') as f:
+                        make_conf_content = f.read()
+                    
+                    # Ersetze GENTOO_MIRRORS oder füge sie hinzu
+                    mirrors_value = ' '.join(self.custom_mirrors)
+                    if 'GENTOO_MIRRORS=' in make_conf_content:
+                        # Ersetze existierende GENTOO_MIRRORS
+                        updated_content = re.sub(
+                            r'GENTOO_MIRRORS\s*=\s*"[^"]*"',
+                            f'GENTOO_MIRRORS="{mirrors_value}"',
+                            make_conf_content
+                        )
+                    else:
+                        # Füge neue Zeile am Ende hinzu
+                        updated_content = make_conf_content.rstrip() + f'\n\n# Deutsche Gentoo Mirrors (Standardwert)\nGENTOO_MIRRORS="{mirrors_value}"\n'
+                    
+                    if updated_content != make_conf_content:
+                        with open(make_conf_path, 'w') as f:
+                            f.write(updated_content)
+                        make_conf_updated = True
+                        self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
+                except Exception as e:
+                    self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
             
             # Prüfe verschiedene mögliche Pfade für repos.conf
             possible_paths = [
