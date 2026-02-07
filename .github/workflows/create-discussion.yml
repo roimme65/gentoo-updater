@@ -41,7 +41,7 @@ jobs:
             exit 1
           fi
           
-          # Hole erste Discussion Category ID
+          # Hole erste Discussion Category ID  
           CAT_ID=$(curl -s -X POST https://api.github.com/graphql \
             -H "Authorization: bearer ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
@@ -50,11 +50,11 @@ jobs:
           
           echo "Category ID: ${CAT_ID:-(none)}"
           
-          # Erstelle Discussion mutation (ohne Body - einfacher und zuverlässiger)
+          # Erstelle Discussion mit einfachem Body
           if [ ! -z "$CAT_ID" ]; then
-            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\"}) { discussion { id url } } }"
+            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\", body: \\\"Release Notes verfügbar unter: https://github.com/$REPO/releases/tag/$VERSION\\\"}) { discussion { id url } } }"
           else
-            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\"}) { discussion { id url } } }"
+            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\", body: \\\"Release Notes verfügbar unter: https://github.com/$REPO/releases/tag/$VERSION\\\"}) { discussion { id url } } }"
           fi
           
           echo "Executing mutation..."
