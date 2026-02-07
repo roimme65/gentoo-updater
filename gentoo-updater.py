@@ -328,11 +328,11 @@ GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issu
 # German Mirrors (Default)
 # ========================
 
-# Deutsche Gentoo Mirrors (rsync-basiert für Sync-Operationen)
+# Deutsche Gentoo Mirrors (HTTP-basiert für Sync-Operationen - modernes Format)
 DEFAULT_GERMAN_MIRRORS = [
-    'rsync://mirror.netcologne.de/gentoo/',  # NetCologne - Germany
-    'rsync://ftp.gwdg.de/pub/linux/gentoo/', # GWDG - Germany
-    'rsync://mirror.walk.infomir.de/pub/mirror/gentoo/',  # Infomir - Germany
+    'https://mirror.netcologne.de/gentoo/',  # NetCologne - Germany
+    'https://ftp.gwdg.de/pub/linux/gentoo/', # GWDG - Germany
+    'https://ftp.halifax.rwth-aachen.de/gentoo/', # RWTH Aachen - Germany
 ]
 
 CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
@@ -1341,7 +1341,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.20                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.21                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1568,7 +1568,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.20')
+                       version='Gentoo Updater v1.4.21')
     
     args = parser.parse_args()
     
