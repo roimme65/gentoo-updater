@@ -1,3 +1,10 @@
+## [1.4.3] - 2026-02-07
+
+### Siehe
+- Detaillierte Release-Notes: [releases/v1.4.3.md](releases/v1.4.3.md)
+
+---
+
 ## [1.4.1] - 2026-02-07
 
 ### Siehe
