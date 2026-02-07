@@ -21,18 +21,80 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
+          REPO="${GITHUB_REPOSITORY}"
+          
           echo "Creating discussion for: $VERSION"
           
-          # Lese Release-Notes wenn vorhanden
+          # Lese Release-Notes
           if [ -f "releases/${VERSION}.md" ]; then
             BODY=$(cat "releases/${VERSION}.md")
           else
             BODY="Release ${VERSION} ist verfügbar!"
           fi
           
-          # Versuche gh discussion mit verschiedenen Optionen
-          gh discussion create --title "Release ${VERSION}" --body "$BODY" 2>/dev/null ||
-          gh discussion create --title "Release ${VERSION}" 2>/dev/null ||
-          echo "⚠️ gh discussion create nicht verfügbar (optional)"
+          # Escape body für JSON
+          BODY_JSON=$(echo "$BODY" | jq -Rs '.')
           
-          echo "✅ Workflow abgeschlossen"
+          # 1. Hole Repository ID
+          REPO_QUERY=$(curl -s -X POST https://api.github.com/graphql \
+            -H "Authorization: bearer ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"query { repository(owner: \\\"${REPO%/*}\\\", name: \\\"${REPO#*/}\\\") { id } }\"
+            }")
+          
+          REPO_ID=$(echo "$REPO_QUERY" | jq -r '.data.repository.id')
+          echo "Repository ID: $REPO_ID"
+          
+          if [ "$REPO_ID" = "null" ] || [ -z "$REPO_ID" ]; then
+            echo "❌ Could not get repository ID"
+            exit 1
+          fi
+          
+          # 2. Hole erste Discussion Category ID
+          CAT_QUERY=$(curl -s -X POST https://api.github.com/graphql \
+            -H "Authorization: bearer ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"query { repository(owner: \\\"${REPO%/*}\\\", name: \\\"${REPO#*/}\\\") { discussionCategories(first: 1) { edges { node { id } } } } }\"
+            }")
+          
+          CAT_ID=$(echo "$CAT_QUERY" | jq -r '.data.repository.discussionCategories.edges[0].node.id')
+          echo "Category ID: $CAT_ID"
+          
+          if [ "$CAT_ID" = "null" ] || [ -z "$CAT_ID" ]; then
+            echo "⚠️ Could not get category ID, using default"
+            CAT_ID=""
+          fi
+          
+          # 3. Erstelle Discussion
+          if [ -z "$CAT_ID" ] || [ "$CAT_ID" = "null" ]; then
+            # Ohne Category
+            MUTATION="{
+              \"query\": \"mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\", body: $BODY_JSON}) { discussion { id url } } }\"
+            }"
+          else
+            # Mit Category
+            MUTATION="{
+              \"query\": \"mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\", body: $BODY_JSON}) { discussion { id url } } }\"
+            }"
+          fi
+          
+          RESPONSE=$(curl -s -X POST https://api.github.com/graphql \
+            -H "Authorization: bearer ${GITHUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$MUTATION")
+          
+          echo "Response: $RESPONSE"
+          
+          # Prüfe ob erfolgreich
+          if echo "$RESPONSE" | grep -q '"id"'; then
+            echo "✅ Discussion erstellt!"
+            URL=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.url // empty')
+            if [ ! -z "$URL" ]; then
+              echo "URL: $URL"
+            fi
+          else
+            ERROR=$(echo "$RESPONSE" | jq -r '.errors[0].message // "Unknown error"')
+            echo "⚠️ Discussion konnte nicht erstellt werden: $ERROR"
+          fi
