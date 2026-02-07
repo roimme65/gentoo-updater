@@ -1558,7 +1558,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.3')
+                       version='Gentoo Updater v1.4.4')
     
     args = parser.parse_args()
     
