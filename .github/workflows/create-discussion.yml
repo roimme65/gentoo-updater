@@ -21,7 +21,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
-          OWNER_REPO="${GITHUB_REPOSITORY}"
           echo "Creating discussion for version: $VERSION"
           
           # Lese Release-Notes wenn vorhanden
@@ -31,8 +30,20 @@ jobs:
             BODY="Release ${VERSION} ist verfügbar!"
           fi
           
-          # Erstelle Discussion mit gh CLI
-          gh discussion create \
-            --title "Release ${VERSION}" \
-            --body "$BODY" \
-            --category "Announcements" || echo "⚠️ Discussion konnte nicht erstellt werden"
+          # Versuche gh discussion create - fallback nur mit Titel
+          (
+            gh discussion create \
+              --title "Release ${VERSION}" \
+              --body "$BODY" 2>/dev/null
+          ) || (
+            gh discussion create \
+              --title "Release ${VERSION}" 2>/dev/null
+          ) || (
+            echo "⚠️ gh discussion create fehlgeschlagen - verwende REST API"
+            # Fallback via REST API
+            curl -s -X POST "https://api.github.com/repos/${GITHUB_REPOSITORY}/discussions" \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "{\"title\":\"Release ${VERSION}\",\"body\":\"$BODY\",\"category_id\":\"DIC_kwDOKKoVj84CS9FK\"}" || echo "⚠️ REST API auch fehlgeschlagen"
+          )
+          echo "✅ Discussion erstellt oder fehlgeschlagen (nicht kritisch)"
