@@ -82,7 +82,7 @@ chmod +x gentoo-updater.py
 sudo cp gentoo-updater.py /usr/local/bin/gentoo-updater
 ```
 
-### Method 3: PyPI (Coming in v1.4.0+)
+### Method 3: PyPI (Coming in v1.5.x)
 
 ```bash
 pip install gentoo-updater
