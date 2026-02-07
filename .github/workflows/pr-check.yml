@@ -1,4 +1,5 @@
 name: Pull Request Check
+run-name: ✅ PR Check - #${{ github.event.pull_request.number }}
 
 on:
   pull_request:
