@@ -268,7 +268,76 @@ After each update:
 - Module rebuild status
 - Errors and warnings
 - Total duration
+## 🇩🇪 German Mirrors & Security
 
+### Automatic German Mirror Configuration
+
+Gentoo Updater is now pre-configured with optimized German mirrors for maximum download speed:
+
+**Distfiles (Source Code):**
+| Rank | Server | Location | Speed |
+|------|--------|----------|-------|
+| 🥇 | RWTH Aachen (ftp.halifax.rwth-aachen.de) | Aachen, Germany | ⚡⚡⚡ Very Fast |
+| 🥈 | Init7 (mirror.init7.net) | Switzerland | ⚡⚡ Fast |
+| 🥉 | NetCologne Cologne (mirror.netcologne.de) | Cologne, Germany | ⚡⚡ Fast |
+| 4️⃣ | Ruhr University Bochum | Bochum, Germany | ⚡ Stable |
+
+**Portage Repository (Rsync):**
+- 🥇 NetCologne Cologne (rsync://mirror.netcologne.de/gentoo-portage)
+- 🔄 Fallback: rsync.gentoo.org (Official)
+
+### verify-sig Security
+
+🔐 **GPG Signature Verification Automatically Enabled:**
+
+The script automatically enables the `verify-sig` USE flag for maximum security:
+
+```bash
+# verify-sig enabled in make.conf
+USE="... verify-sig"
+
+# Emerge will verify all distfiles:
+- Manifests with OpenPGP signatures
+- All packages validated against Gentoo keys
+- Tampering detected immediately
+```
+
+**Customize Configuration:**
+
+```bash
+# make.conf - Distfiles Mirror
+nano /etc/portage/make.conf
+GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ ..."
+
+# repos.conf - Portage Tree Mirror
+nano /etc/portage/repos.conf/gentoo.conf
+sync-uri = rsync://mirror.netcologne.de/gentoo-portage
+```
+
+### mirrorselect Integration
+
+**Automatic Interactive Mirror Selection:**
+
+If `mirrorselect` is installed, Gentoo Updater can automatically select the best mirrors:
+
+```bash
+# Installation (if not already installed)
+sudo emerge -a app-portage/mirrorselect
+
+# Gentoo Updater detects mirrorselect automatically
+sudo gentoo-updater
+# ✓ mirrorselect for German mirror selection available
+```
+
+**Manual Mirror Selection:**
+
+```bash
+# Select Distfiles interactively (ncurses UI)
+sudo mirrorselect -i -o
+
+# Select Rsync mirror interactively
+sudo mirrorselect -i -r
+```
 ## Troubleshooting
 
 ### "Script requires root privileges"
@@ -395,6 +464,14 @@ Contributions are welcome! Please create a pull request or open an issue.
 - 🌍 **Environment Variables:** Full environment variable support (GENTOO_UPDATER_*)
 - 📝 **Documentation:** Updated help with examples and environment variable docs
 - ✨ **v1.4.0 Ready for PyPI:** All parameters fully implemented
+
+### v1.4.24 (2026-02-07) - 🇩🇪 German Mirrors & verify-sig
+- 🇩🇪 **German Mirrors:** RWTH Aachen (Distfiles), NetCologne (Rsync)
+- 🔐 **Security:** verify-sig USE flag for GPG signature verification
+- 🎯 **mirrorselect Integration:** Automatic & interactive mirror selection
+- ✨ **Tier-1 Mirrors:** RWTH Aachen, Init7, NetCologne, Ruhr University Bochum
+- 📝 **Configuration:** Separate Distfiles and Rsync mirror handling
+- 🛡️ **Enhanced Security:** All packages compiled with GPG verification
 
 ### v1.3.3 (2026-02-06) - 🌍 Mirror Logging
 - 🌍 **New Feature:** Mirror Logging
