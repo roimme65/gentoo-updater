@@ -22,28 +22,18 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
           REPO="${GITHUB_REPOSITORY}"
+          OWNER="${REPO%/*}"
+          REPO_NAME="${REPO#*/}"
           
           echo "Creating discussion for: $VERSION"
           
-          # Lese Release-Notes
-          if [ -f "releases/${VERSION}.md" ]; then
-            BODY=$(cat "releases/${VERSION}.md")
-          else
-            BODY="Release ${VERSION} ist verfügbar!"
-          fi
-          
-          # Escape body für JSON
-          BODY_JSON=$(echo "$BODY" | jq -Rs '.')
-          
-          # 1. Hole Repository ID
-          REPO_QUERY=$(curl -s -X POST https://api.github.com/graphql \
+          # Hole Repository ID
+          REPO_ID=$(curl -s -X POST https://api.github.com/graphql \
             -H "Authorization: bearer ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"query\": \"query { repository(owner: \\\"${REPO%/*}\\\", name: \\\"${REPO#*/}\\\") { id } }\"
-            }")
+            -d "{\"query\": \"query { repository(owner: \\\"$OWNER\\\", name: \\\"$REPO_NAME\\\") { id } }\"}" \
+            | jq -r '.data.repository.id')
           
-          REPO_ID=$(echo "$REPO_QUERY" | jq -r '.data.repository.id')
           echo "Repository ID: $REPO_ID"
           
           if [ "$REPO_ID" = "null" ] || [ -z "$REPO_ID" ]; then
@@ -51,50 +41,36 @@ jobs:
             exit 1
           fi
           
-          # 2. Hole erste Discussion Category ID
-          CAT_QUERY=$(curl -s -X POST https://api.github.com/graphql \
+          # Hole erste Discussion Category ID
+          CAT_ID=$(curl -s -X POST https://api.github.com/graphql \
             -H "Authorization: bearer ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"query\": \"query { repository(owner: \\\"${REPO%/*}\\\", name: \\\"${REPO#*/}\\\") { discussionCategories(first: 1) { edges { node { id } } } } }\"
-            }")
+            -d "{\"query\": \"query { repository(owner: \\\"$OWNER\\\", name: \\\"$REPO_NAME\\\") { discussionCategories(first: 1) { edges { node { id } } } } }\"}" \
+            | jq -r '.data.repository.discussionCategories.edges[0].node.id // empty')
           
-          CAT_ID=$(echo "$CAT_QUERY" | jq -r '.data.repository.discussionCategories.edges[0].node.id')
-          echo "Category ID: $CAT_ID"
+          echo "Category ID: ${CAT_ID:-(none)}"
           
-          if [ "$CAT_ID" = "null" ] || [ -z "$CAT_ID" ]; then
-            echo "⚠️ Could not get category ID, using default"
-            CAT_ID=""
-          fi
-          
-          # 3. Erstelle Discussion
-          if [ -z "$CAT_ID" ] || [ "$CAT_ID" = "null" ]; then
-            # Ohne Category
-            MUTATION="{
-              \"query\": \"mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\", body: $BODY_JSON}) { discussion { id url } } }\"
-            }"
+          # Erstelle Discussion mutation (ohne Body - einfacher und zuverlässiger)
+          if [ ! -z "$CAT_ID" ]; then
+            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\"}) { discussion { id url } } }"
           else
-            # Mit Category
-            MUTATION="{
-              \"query\": \"mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\", body: $BODY_JSON}) { discussion { id url } } }\"
-            }"
+            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\"}) { discussion { id url } } }"
           fi
           
+          echo "Executing mutation..."
           RESPONSE=$(curl -s -X POST https://api.github.com/graphql \
             -H "Authorization: bearer ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$MUTATION")
+            -d "{\"query\": \"$QUERY\"}")
           
           echo "Response: $RESPONSE"
           
-          # Prüfe ob erfolgreich
-          if echo "$RESPONSE" | grep -q '"id"'; then
+          # Prüfe auf Erfolg
+          if echo "$RESPONSE" | jq -e '.data.createDiscussion.discussion.id' > /dev/null 2>&1; then
             echo "✅ Discussion erstellt!"
-            URL=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.url // empty')
-            if [ ! -z "$URL" ]; then
-              echo "URL: $URL"
-            fi
+            URL=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.url')
+            echo "URL: $URL"
           else
-            ERROR=$(echo "$RESPONSE" | jq -r '.errors[0].message // "Unknown error"')
+            ERROR=$(echo "$RESPONSE" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null || echo "JSON error")
             echo "⚠️ Discussion konnte nicht erstellt werden: $ERROR"
           fi
