@@ -362,16 +362,15 @@ class ReleaseManager:
             return False
     
     def create_github_discussion(self):
-        """Erstellt GitHub Discussion (optional - zeigt Hinweis)"""
+        """GitHub Discussion wird via GitHub Action erstellt (automatisch)"""
         print_info("GitHub Discussions...")
         
-        # GitHub Discussions sind optional und können manuell erstellt werden
-        print_warning("gh discussion wird in dieser gh CLI Version noch nicht unterstützt")
-        print_info(f"ℹ️ Discussions sind optional - Release wurde trotzdem erfolgreich erstellt!")
-        print_info(f"→ Erstelle Discussion manuell (optional): https://github.com/imme-php/gentoo-updater/discussions/new")
-        print_info(f"   Titel: 'v{self.new_version} - Release Discussion'")
+        print_success("✅ GitHub Action erstellt Discussion automatisch!")
+        print_info(f"→ Workflow: .github/workflows/create-discussion.yml")
+        print_info(f"→ Wird bei neuen Tags automatisch ausgelöst")
+        print_info(f"   https://github.com/imme-php/gentoo-updater/discussions")
         
-        return True  # Kein kritischer Fehler - nur optional
+        return True
 
 def main():
     parser = argparse.ArgumentParser(
