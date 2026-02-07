@@ -334,6 +334,15 @@ class ReleaseManager:
         """Erstellt GitHub Discussion"""
         print_info("Erstelle GitHub Discussion...")
         
+        # Prüfe ob gh discussion unterstützt wird
+        check_cmd = ['gh', 'discussion', '--help']
+        result = subprocess.run(check_cmd, capture_output=True, text=True, cwd=self.project_root)
+        
+        if 'unknown command' in result.stderr or 'unknown command' in result.stdout:
+            print_warning("GitHub Discussion nicht unterstützt (gh CLI zu alt)")
+            print_info(f"→ Erstelle Discussion manuell: https://github.com/imme-php/gentoo-updater/discussions/new")
+            return True  # Kein Fehler - nur nicht unterstützt
+        
         discussion_body = f"Release v{self.new_version} ist verfügbar!\n\n"
         discussion_body += "Bitte testen und Feedback geben."
         
@@ -361,8 +370,9 @@ class ReleaseManager:
                 print_success("GitHub Discussion erstellt (ohne Kategorie)")
                 return True
             else:
-                print_warning(f"GitHub Discussion konnte nicht erstellt werden: {result.stderr}")
-                return False
+                print_warning(f"GitHub Discussion nicht erstellt (optional): {result.stderr}")
+                print_info(f"→ Erstelle Discussion manuell: https://github.com/imme-php/gentoo-updater/discussions/new")
+                return True  # Kein Fehler - optional
 
 def main():
     parser = argparse.ArgumentParser(
