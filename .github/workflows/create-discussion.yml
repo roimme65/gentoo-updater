@@ -28,11 +28,14 @@ jobs:
           if [ -f "releases/${VERSION}.md" ]; then
             BODY=$(cat "releases/${VERSION}.md")
           else
-            BODY="🎉 Release ${VERSION} ist verfügbar!
+            BODY=$(cat << "EOFMSG"
+🎉 Release ${VERSION} ist verfügbar!
 
 Bitte testen und Feedback geben.
 
-📖 Release-Notes: https://github.com/${GH_REPO}/releases/tag/${VERSION}"
+📖 Release-Notes: https://github.com/${GH_REPO}/releases/tag/${VERSION}
+EOFMSG
+)
           fi
           
           # Versuche mit gh CLI Discussion zu erstellen (fallback auf REST API)
