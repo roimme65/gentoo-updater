@@ -1373,7 +1373,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.15                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.16                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1600,7 +1600,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.15')
+                       version='Gentoo Updater v1.4.16')
     
     args = parser.parse_args()
     
