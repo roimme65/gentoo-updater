@@ -4,7 +4,7 @@ Gentoo System Updater
 Automatisches Update-Skript für Gentoo Linux
 """
 
-__version__ = "1.4.30"
+__version__ = "1.4.31"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 

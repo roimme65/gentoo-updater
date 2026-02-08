@@ -135,6 +135,30 @@
 - **v1.2.0**: ~65 Minuten
 - **Ersparnis**: 55 Minuten
 
+### MAKEOPTS Konfiguration für make.conf
+
+Die optimalen MAKEOPTS-Einstellungen hängen von Ihrer Hardware ab:
+
+| System | Optimal MAKEOPTS | Erklärung |
+|--------|------------------|-----------|
+| **2-Core** | `-j2 -l2` | 2 Jobs, Load-Limit 2.0 |
+| **4-Core** | `-j4 -l3` | 4 Jobs, Load-Limit 3.0 |
+| **6-Core** | `-j6 -l4` | 6 Jobs, Load-Limit 4.0 |
+| **8-Core** | `-j8 -l5` | 8 Jobs, Load-Limit 5.0 (✅ Dieses System) |
+| **12-Core** | `-j12 -l7` | 12 Jobs, Load-Limit 7.0 |
+| **16-Core** | `-j16 -l10` | 16 Jobs, Load-Limit 10.0 |
+
+**Faustregel:**
+- `-j` (Jobs) = Anzahl CPU-Kerne
+- `-l` (Load-Average Limit) = 60-70% der CPU-Kernen
+
+**Zum Setzen in `/etc/portage/make.conf`:**
+```bash
+sudo nano /etc/portage/make.conf
+# Hinzufügen oder aktualisieren:
+MAKEOPTS="-j8 -l5"
+```
+
 ## 🔧 Technische Details
 
 ### Neue Dependencies
