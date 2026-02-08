@@ -13,7 +13,7 @@ import argparse
 from pathlib import Path
 
 # Versionsverwaltung - synchronisiert mit gentoo-updater.py
-__version__ = "1.4.29"
+__version__ = "1.4.30"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 
@@ -393,25 +393,20 @@ class Installer:
 
 
 def main():
-    """Hauptfunktion"""
+    """Hauptfunktion - Installation/Update von gentoo-updater"""
     # CLI Argument Parser
     parser = argparse.ArgumentParser(
-        description='Gentoo Updater Installation und Versionsverwaltung',
+        description='Gentoo Updater - Installation und Update',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Beispiele:
-  python3 install.py                    # Installiere gentoo-updater
-  python3 install.py --bump patch       # Bumpe auf 1.4.29
-  python3 install.py --bump minor       # Bumpe auf 1.5.0
-  python3 install.py --bump major       # Bumpe auf 2.0.0
-  python3 install.py --version          # Zeige aktuelle Version
+  sudo python3 install.py              # Installiere/Update gentoo-updater
+  python3 install.py --version         # Zeige aktuelle Version
+
+Hinweis:
+  Versionsverwaltung erfolgt ausschließlich über:
+  python3 scripts/create-release.py [major|minor|patch]
 """
-    )
-    
-    parser.add_argument(
-        '--bump',
-        choices=['major', 'minor', 'patch'],
-        help='Versionsnummer erhöhen'
     )
     
     parser.add_argument(
@@ -432,48 +427,22 @@ Beispiele:
             print()
             return
         
-        # Version Bumping
-        if args.bump:
-            version_manager = VersionManager()
-            print_header(f"VERSION BUMPING - {args.bump.upper()}")
-            
-            print_info(f"Aktuelle Version: v{version_manager.current_version}")
-            new_version = version_manager.bump_version(args.bump)
-            print_info(f"Neue Version: v{new_version}")
-            print()
-            
-            # Aktualisiere Versionen
-            if not version_manager.update_all_versions(new_version):
-                sys.exit(1)
-            
-            print()
-            print_header("VERSION UPDATE ABGESCHLOSSEN")
-            print_success(f"Version erfolgreich auf v{new_version} aktualisiert!")
-            print()
-            print_info("Nächste Schritte:")
-            print("  1. Änderungen überprüfen: git diff")
-            print("  2. Commit erstellen: git add -A && git commit -m 'Bump version to v{}'".format(new_version))
-            print("  3. Tag erstellen: git tag -a v{} -m 'v{}'".format(new_version, new_version))
-            print("  4. Bei Full Release: python3 scripts/create-release.py {bump_type} --skip-github".format(bump_type=args.bump))
-            print()
-            return
-        
-        # Standard: Installation
-        print_header("GENTOO UPDATER INSTALLATION")
+        # Standard: Installation/Update
+        print_header("GENTOO UPDATER INSTALLATION/UPDATE")
         
         # System-Checks
         checker = SystemChecker()
         if not checker.run_all_checks():
             sys.exit(1)
         
-        # Installation
+        # Installation/Update
         installer = Installer()
         if not installer.install():
             sys.exit(1)
         
         # Abschluss
         print_header("INSTALLATION ABGESCHLOSSEN")
-        print_success("gentoo-updater wurde erfolgreich installiert!")
+        print_success("gentoo-updater wurde erfolgreich installiert/aktualisiert!")
         
         installer.print_usage_examples()
         
@@ -485,6 +454,9 @@ Beispiele:
         print()
         print_info("Du kannst gentoo-updater jetzt starten mit:")
         print(f"  {Colors.BOLD}sudo gentoo-updater{Colors.ENDC}")
+        print()
+        print_info("Für neue Release via:")
+        print(f"  {Colors.BOLD}python3 scripts/create-release.py [major|minor|patch]{Colors.ENDC}")
         print()
         
     except KeyboardInterrupt:
