@@ -27,7 +27,7 @@ jobs:
       - name: Verify version tag
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          SCRIPT_VERSION=$(grep "version='Gentoo Updater" gentoo-updater.py | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+')
+          SCRIPT_VERSION=$(grep "__version__" gentoo-updater.py | grep -oP '"(\K[0-9]+\.[0-9]+\.[0-9]+)')
           if [ "$TAG_VERSION" != "$SCRIPT_VERSION" ]; then
             echo "❌ Version mismatch: Tag=$TAG_VERSION, Script=$SCRIPT_VERSION"
             exit 1

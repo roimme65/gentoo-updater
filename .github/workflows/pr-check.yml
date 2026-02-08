@@ -52,6 +52,7 @@ jobs:
       - name: Run all checks
         run: |
           python -m py_compile gentoo-updater.py
+          python -m py_compile install.py
           python3 -m json.tool gentoo-updater.conf.example > /dev/null
           echo "✓ All checks passed"
 

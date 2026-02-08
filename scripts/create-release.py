@@ -41,17 +41,17 @@ class VersionManager:
     """Verwaltet Versionsnummern im Projekt"""
     
     VERSION_PATTERNS = [
-        # gentoo-updater.py - Banner
+        # gentoo-updater.py - __version__ Variable (zentral)
         {
             'file': 'gentoo-updater.py',
-            'pattern': r'(║.*GENTOO SYSTEM UPDATER v)(\d+\.\d+\.\d+)',
-            'replacement': r'\g<1>{version}'
+            'pattern': r'(__version__\s*=\s*")(\d+\.\d+\.\d+)(")',
+            'replacement': r'\g<1>{version}\g<3>'
         },
-        # gentoo-updater.py - argparse version
+        # install.py - __version__ Variable
         {
-            'file': 'gentoo-updater.py',
-            'pattern': r"(version='Gentoo Updater v)(\d+\.\d+\.\d+)(')",
-            'replacement': r"\g<1>{version}\g<3>"
+            'file': 'install.py',
+            'pattern': r'(__version__\s*=\s*")(\d+\.\d+\.\d+)(")',
+            'replacement': r'\g<1>{version}\g<3>'
         },
     ]
     
@@ -60,14 +60,14 @@ class VersionManager:
         self.current_version = self.get_current_version()
         
     def get_current_version(self) -> str:
-        """Extrahiert aktuelle Version aus gentoo-updater.py"""
+        """Extrahiert aktuelle Version aus __version__ in gentoo-updater.py"""
         py_file = self.project_root / 'gentoo-updater.py'
         
         with open(py_file, 'r') as f:
             content = f.read()
         
-        # Suche nach Version in argparse
-        match = re.search(r"version='Gentoo Updater v(\d+\.\d+\.\d+)'", content)
+        # Suche nach __version__ Variable (zentral)
+        match = re.search(r'__version__\s*=\s*"(\d+\.\d+\.\d+)"', content)
         if match:
             return match.group(1)
         

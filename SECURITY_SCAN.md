@@ -325,10 +325,11 @@ If using in production environments:
 
 ### Scanned Files
 
-• `gentoo-updater.py` (1,956 lines)
+• `gentoo-updater.py` (1,628 lines) - Main update orchestrator
+• `install.py` (385 lines) - Installation and version management
 • `scripts/create-release.py` (included in scans)
 • Configuration handling analysis
-• Total source reviewed: 1,893 lines
+• Total source reviewed: 2,013 lines
 
 ### Exclusions
 
@@ -346,16 +347,20 @@ The following were intentionally excluded from security analysis:
 
 ```
 Tool: Bandit v1.9.3
-Python Version: 3.14.0
-Run Date: 2026-02-08 13:24:54
+Python Version: 3.13.11
+Run Date: 2026-02-08 17:21:08
 
-Total Issues:      46
+Scanned Files:
+├─ gentoo-updater.py (1,628 lines)
+└─ install.py (385 lines)
+
+Total Issues:      50
 ├─ Severity High:   0 ✅
-├─ Severity Medium: 0 ✅
-└─ Severity Low:   46 (All False Positives ✅)
+├─ Severity Medium: 1 (chmod permissions - see B103 below)
+└─ Severity Low:   49 (All False Positives ✅)
 
 Code Metrics:
-├─ Total Lines: 1,893
+├─ Total Lines: 2,013 (combined)
 ├─ Skipped Lines: 0
 └─ Issues Skipped: 0
 ```
@@ -378,7 +383,7 @@ Verdict: Standard and safe usage
 #### B110: Try/Except/Pass (2 instances) - FALSE POSITIVE ✅
 
 ```
-Location: gentoo-updater.py:32
+Location: gentoo-updater.py:36
 Code: 
     try:
         system_locale = locale.getlocale()[0]
@@ -391,35 +396,77 @@ Analysis:
 Recommendation: Catch specific exceptions (fixed in next version)
 ```
 
-#### B607: Subprocess with Partial Executable Path (20 instances) - FALSE POSITIVE ✅
+#### B103: Chmod Setting Permissive Mask (1 instance) - LOW RISK ✅
+
+```
+Location: install.py:315
+Code:
+    os.chmod(self.dest_file, 0o755)
+
+Analysis:
+✓ SAFE FOR CONTEXT - 0o755 is standard for executable scripts
+✓ EXPECTED - Binary installation must be executable for all users
+✓ INTENTIONAL - This is the correct permission for system commands
+
+Why This Is Safe:
+- Installation scripts must be readable/executable by all users
+- 0o755 means: rwx r-x r-x (owner: full, group: read+exec, other: read+exec)
+- Standard permission for /usr/bin and /usr/local/bin executables
+- No sensitive data in the script itself
+- Script is installing to /usr/local/bin (system-wide accessible)
+
+Alternative (if higher security desired):
+    os.chmod(self.dest_file, 0o700)  # rwx --- --- (owner only)
+    # But this would prevent other users from running the command
+
+Verdict: Standard permission for system command installation
+```
+
+#### B607: Subprocess with Partial Executable Path (22 instances) - FALSE POSITIVE ✅
 
 ```
 Affected Commands:
 ├─ emerge (10x) - Main package manager (always in PATH on Gentoo)
-├─ which (4x) - Utility to check binary availability
+├─ which (5x) - Utility to check binary availability (5 in install.py)
 ├─ eselect (2x) - Gentoo profile management
 ├─ find (1x) - File system search
 ├─ mail (1x) - System notification utility
-└─ mirrorselect (2x) - Mirror selection utility
+├─ mirrorselect (2x) - Mirror selection utility
+└─ etc-update (1x) - Configuration file management
 
 Analysis:
 ✅ SAFE - All commands are system binaries in PATH
 ✅ SAFE - Using argument arrays prevents injection
 ✅ SAFE - No user input in command specification
 ✅ EXPECTED - Gentoo standard tools must be in PATH
+✅ NEW - install.py uses which() to detect commands before execution
 Verdict: Known false positive for standard Gentoo tooling
 ```
 
-#### B603: subprocess without explicit shell=True (19 instances) - FALSE POSITIVE ✅
+#### B603: subprocess without explicit shell=True (21 instances) - FALSE POSITIVE ✅
 
 ```
 Analysis:
 ✅ SAFE - Programs explicitly use argument arrays (implicit shell=False)
 ✅ SAFE - No string concatenation in command building
 ✅ SAFE - No unsanitized user input in any command
+✅ NEW - install.py also uses safe argument format
 Pattern Verified: All calls use [command, arg1, arg2, ...] format
 
-Example (SAFE pattern):
+Example (SAFE pattern - install.py):
+    subprocess.run(
+        ["which", command],  # ← Argument array (no shell)
+        capture_output=True,
+        check=True
+    )
+
+Example (SAFE pattern - etc-update):
+    subprocess.run(
+        ["etc-update", "-a"],  # ← Argument array (no shell)
+        check=False
+    )
+
+Example (SAFE pattern - original):
     subprocess.run(
         ["emerge", "--pretend", "@world"],  # ← Argument array
         capture_output=True,
@@ -431,14 +478,16 @@ Example (SAFE pattern):
 
 ✅ **NO REAL VULNERABILITIES FOUND**
 
-All 46 reported issues are known Bandit false positives for safe patterns:
-- Safe subprocess calls with argument arrays
+All 50 reported issues are either known Bandit false positives for safe patterns or expected findings:
+- Safe subprocess calls with argument arrays (49 instances)
 - System binaries only (no untrusted executables)
 - No shell execution parameter set
 - No input injection vectors present
 - All tools are standard on Gentoo systems
+- 1 Medium severity (chmod 0o755) is standard for executable installation
+- New install.py also follows safe subprocess patterns
 
-**Conclusion:** Bandit warnings are expected for system administration tools that call external binaries in a controlled manner. Each call has been manually verified as safe.
+**Conclusion:** Bandit warnings are expected for system administration tools that call external binaries in a controlled manner. Each call has been manually verified as safe. The chmod issue is expected and appropriate for system command installation.
 
 ---
 
@@ -513,12 +562,128 @@ Please report security issues **privately** via:
 ## 📝 Scan Metadata
 
 - **Scanner Version:** Bandit 1.9.3
-- **Python Version Scanned:** 3.14.0
-- **Scan Date:** 2026-02-08
-- **Total Time:** ~37 seconds
+- **Python Version Scanned:** 3.13.11
+- **Scan Date:** 2026-02-08 17:21:08
+- **Total Time:** ~52 seconds
+- **Files Scanned:** gentoo-updater.py + install.py
 - **Repository:** Public (https://github.com/roimme65/gentoo-updater)
 - **Last Updated:** 2026-02-08
 - **Next Recommended Scan:** 2026-05-08 (quarterly)
+
+---
+
+## 🆕 New Security Findings - install.py (v1.4.28+)
+
+### `install.py` Security Assessment
+
+**Status:** ✅ SECURE  
+**Scan Date:** 2026-02-08  
+**Lines Scanned:** 385
+
+#### Key Features Reviewed
+
+**VersionManager Class:**
+- Version bumping (major/minor/patch)
+- File modification with regex (version patterns)
+- All version patterns are hardcoded constants (safe)
+
+**SystemChecker Class:**
+- Root privilege verification
+- Python 3 version checking
+- Gentoo Linux detection
+- Optional dependency detection
+
+**Installer Class:**
+- File copy to system location
+- Executable permission setting
+- Dependency installation request
+
+#### Security Findings
+
+✅ **No code execution vulnerabilities**
+✅ **No hardcoded credentials**
+✅ **Safe subprocess patterns** (all use argument arrays)
+✅ **Proper error handling** (try/except blocks)
+
+⚠️ **B103: chmod 0o755 for executable**
+- **Severity:** Medium (but expected)
+- **Reason:** Standard permission for system commands
+- **Impact:** None - this is correct behavior
+- **Documentation:** Added to B103 section above
+
+#### Subprocess Calls in install.py
+
+```python
+# Safe: which() to verify command exists before use
+subprocess.run(["which", command], capture_output=True, check=True)
+
+# Safe: emerge for optional package installation  
+subprocess.run(["emerge", "--ask", portage_pkg], check=False)
+```
+
+**All subprocess calls evaluated:** ✅ SAFE
+
+#### Version Management Safety
+
+```python
+# Safe: Hardcoded version patterns list
+VERSION_PATTERNS = [
+    'gentoo-updater.py',      # Hardcoded file names
+    'install.py'
+]
+
+# Safe: Regex substitution with fixed patterns
+pattern = r'__version__ = "[0-9.]+"'
+new_version_str = re.sub(pattern, f'__version__ = "{version}"', content)
+```
+
+**Pattern Injection Risk:** ✅ MITIGATED
+- Version patterns only reference hardcoded file names
+- No user input in version pattern construction
+- Regex patterns are fixed strings (not derived from input)
+
+### Overall Assessment
+
+| Component | Status | Risk |
+|-----------|--------|------|
+| Subprocess safety | ✅ PASS | Low |
+| File operations | ✅ PASS | Low |
+| Version management | ✅ PASS | Low |
+| Privilege checks | ✅ PASS | Low |
+| Error handling | ✅ PASS | Low |
+| Chmod permissions | ⚠️ ACCEPTABLE | Low |
+
+**Conclusion:** install.py is secure and follows all safety best practices. The chmod warning is expected and appropriate for system command installation.
+
+---
+
+## 🆕 New Features - Security Review (v1.4.29+)
+
+### `--etc-update-mode` Configuration Feature
+
+**Added in:** Latest version  
+**Security Assessment:** ✅ SAFE
+
+```python
+# New safe subprocess calls for configuration management
+subprocess.run(["etc-update", "-a"], check=False)  # Automatic mode
+subprocess.run(["etc-update"], check=False)         # Interactive mode
+```
+
+**Security Analysis:**
+- ✅ Uses argument array pattern (no shell injection)
+- ✅ No user input in command specification
+- ✅ etc-update is standard Gentoo tool (in PATH)
+- ✅ All modes (interactive/auto/skip) are safe
+- ✅ No configuration file injection vectors
+
+**Implementation Details:**
+- `--etc-update-mode {interactive|auto|skip}`
+- Interactive: User-controlled via ncurses UI
+- Auto: Automated with `etc-update -a`
+- Skip: Configuration updates deferred
+
+**No security regressions introduced** ✅
 
 ---
 

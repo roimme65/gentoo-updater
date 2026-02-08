@@ -60,12 +60,12 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 
 ## Installation
 
-### Method 1: Automatic Installation
+### Method 1: Automatic Installation (Recommended)
 
 ```bash
 git clone https://github.com/roimme65/gentoo-updater.git
 cd gentoo-updater
-sudo ./install.sh
+sudo python3 install.py
 ```
 
 ### Method 2: Manual Installation

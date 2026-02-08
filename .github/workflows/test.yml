@@ -24,6 +24,7 @@ jobs:
       - name: Check Python syntax
         run: |
           python -m py_compile gentoo-updater.py
+          python -m py_compile install.py
           echo "✓ Python 3.11 syntax valid"
 
       - name: Set up Python 3.12
@@ -34,6 +35,7 @@ jobs:
       - name: Check Python 3.12 compatibility
         run: |
           python -m py_compile gentoo-updater.py
+          python -m py_compile install.py
           echo "✓ Python 3.12 compatible"
 
   code-quality:
@@ -87,6 +89,7 @@ jobs:
             "LICENSE"
             "SECURITY.md"
             "gentoo-updater.py"
+            "install.py"
             "gentoo-updater.conf.example"
           )
           

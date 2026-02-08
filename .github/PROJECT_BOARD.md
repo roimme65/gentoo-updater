@@ -77,7 +77,7 @@ This project board manages:
 ```bash
 git clone https://github.com/roimme65/gentoo-updater.git
 cd gentoo-updater
-sudo ./install.sh
+sudo python3 install.py
 ```
 
 ### Basic Usage

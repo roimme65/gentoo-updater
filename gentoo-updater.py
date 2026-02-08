@@ -4,6 +4,10 @@ Gentoo System Updater
 Automatisches Update-Skript für Gentoo Linux
 """
 
+__version__ = "1.4.29"
+__author__ = "Roland Imme"
+__license__ = "MIT"
+
 import subprocess
 import sys
 import os
@@ -495,7 +499,8 @@ class GentooUpdater:
                  rebuild_modules: bool = False, config: Optional[Config] = None,
                  log_level: str = 'INFO', timeout: Optional[int] = None,
                  retry_count: int = 1, webhook_url: Optional[str] = None,
-                 max_packages: Optional[int] = None, custom_mirrors: Optional[List[str]] = None):
+                 max_packages: Optional[int] = None, custom_mirrors: Optional[List[str]] = None,
+                 etc_update_mode: str = 'interactive'):
         self.verbose = verbose
         self.dry_run = dry_run
         self.rebuild_modules = rebuild_modules
@@ -506,6 +511,7 @@ class GentooUpdater:
         self.webhook_url = webhook_url
         self.max_packages = max_packages
         self.custom_mirrors = custom_mirrors
+        self.etc_update_mode = etc_update_mode  # interactive, auto, oder skip
         
         # Skip-Flags (werden von main() gesetzt)
         self.skip_sync = False
@@ -1412,9 +1418,7 @@ class GentooUpdater:
             self.print_warning(_('KERNEL_CHECK_FAILED', error=str(e)))
             
     def check_config_updates(self):
-        """Prüft auf Konfigurations-Updates"""
-        self.print_section("SCHRITT 9: Konfigurationsdateien prüfen")
-        
+        """Prüft auf Konfigurations-Updates (nur Prüfung, keine Aktualisierung)"""
         try:
             # Suche nach ._cfg Dateien
             result = subprocess.run(
@@ -1425,13 +1429,76 @@ class GentooUpdater:
             
             if result.stdout.strip():
                 self.print_warning(_('CONFIG_UPDATES_FOUND'))
-                self.print_info("Bitte mit dispatch-conf oder etc-update zusammenführen:")
+                self.print_info("Konfigurationsdateien mit Updates:")
                 print(result.stdout)
+                return True  # Updates vorhanden
             else:
-                self.print_success(_('CONFIG_NO_UPDATES'))
+                return False  # Keine Updates
                 
         except Exception as e:
             self.print_warning(_('CONFIG_CHECK_FAILED', error=str(e)))
+            return False
+    
+    def update_config_files(self):
+        """Aktualisiert Konfigurationsdateien basierend auf eingestelltem Modus
+        
+        Modi:
+        - interactive: Benutzer wird interaktiv gefragt (standard etc-update UI)
+        - auto: Alle Updates werden automatisch angewendet (etc-update -a)
+        - skip: Keine Aktualisierung, nur Benachrichtigung
+        """
+        self.print_section("SCHRITT 9: Konfigurationsdateien aktualisieren")
+        
+        # Prüfe zuerst ob Updates vorhanden sind
+        has_updates = self.check_config_updates()
+        
+        if not has_updates:
+            self.print_success(_('CONFIG_NO_UPDATES'))
+            return True
+        
+        # Verarbeite basierend auf Modus
+        if self.etc_update_mode == 'skip':
+            self.print_info("Modus: skip - Konfigurationsdateien werden nicht aktualisiert")
+            return True
+        
+        elif self.etc_update_mode == 'auto':
+            if self.dry_run:
+                self.print_warning("DRY-RUN: Würde etc-update -a ausführen")
+                return True
+            
+            self.print_info("Modus: auto - Aktualisiere alle Konfigurationsdateien automatisch")
+            success, output = self.run_command(
+                ["etc-update", "-a"],
+                "Aktualisiere Konfigurationsdateien automatisch",
+                allow_fail=True
+            )
+            
+            if success:
+                self.print_success("Alle Konfigurationsdateien wurden automatisch aktualisiert")
+            else:
+                self.print_warning("Fehler beim automatischen Update von Konfigurationsdateien")
+            
+            return success
+        
+        else:  # interactive (default)
+            if self.dry_run:
+                self.print_warning("DRY-RUN: Würde interaktives etc-update starten")
+                return True
+            
+            self.print_info("Modus: interactive - Starte interaktives etc-update")
+            self.print_info("Drücke 'q' zum Beenden, '-' um eine Datei zu überspringen")
+            
+            try:
+                # Starte interaktives etc-update ohne -a Flag (interaktiv)
+                subprocess.run(
+                    ["etc-update"],
+                    check=False
+                )
+                self.print_success("Interaktives etc-update abgeschlossen")
+                return True
+            except Exception as e:
+                self.print_warning(f"Fehler bei interaktivem etc-update: {e}")
+                return False
     
     def print_summary(self, duration):
         """Gibt eine Zusammenfassung des Updates aus"""
@@ -1573,7 +1640,8 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.28                            ║")
+        version_text = f"GENTOO SYSTEM UPDATER v{__version__}"
+        print(f"║ {version_text:^64} ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1627,7 +1695,7 @@ Details siehe: {self.log_file}
                 has_updates, pretend_output = self.check_updates()
                 
                 if not has_updates and not self.dry_run:
-                    self.check_config_updates()
+                    self.update_config_files()
                     end_time = datetime.now()
                     duration = end_time - start_time
                     self.print_summary(duration)
@@ -1659,8 +1727,8 @@ Details siehe: {self.log_file}
             # Schritt 8: Kernel-Check
             self.check_kernel_updates()
             
-            # Schritt 9: Config-Check
-            self.check_config_updates()
+            # Schritt 9: Config-Update (interaktiv, automatisch oder übersprungen)
+            self.update_config_files()
             
         except KeyboardInterrupt:
             self.print_error("Update durch Benutzer abgebrochen")
@@ -1827,6 +1895,14 @@ Umgebungsvariablen:
                        action='store_true',
                        help='Nutze mirrorselect für automatische Auswahl des schnellsten Mirrors')
     
+    parser.add_argument('--etc-update-mode',
+                       choices=['interactive', 'auto', 'skip'],
+                       default='interactive',
+                       help='Modus für Konfigurationsdateien-Updates (default: interactive)\n' +
+                            '  interactive: Benutzer wird interaktiv gefragt\n' +
+                            '  auto: Automatische Aktualisierung aller Dateien\n' +
+                            '  skip: Keine Aktualisierung, nur Benachrichtigung')
+    
     parser.add_argument('--repository',
                        action='store_true',
                        help='Show GitHub repository information')
@@ -1835,11 +1911,45 @@ Umgebungsvariablen:
                        action='store_true',
                        help='Show support and issue template links')
     
+    parser.add_argument('--author',
+                       action='store_true',
+                       help='Show author and version information')
+    
+    parser.add_argument('--license',
+                       action='store_true',
+                       help='Show license information')
+    
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.28')
+                       version=f'Gentoo Updater v{__version__}')
     
     args = parser.parse_args()
+    
+    # Handle --author flag
+    if args.author:
+        print(f"Gentoo System Updater")
+        print(f"Version: {__version__}")
+        print(f"Author: {__author__}")
+        print(f"License: {__license__}")
+        sys.exit(0)
+    
+    # Handle --license flag
+    if args.license:
+        print(f"\n{Colors.HEADER}{Colors.BOLD}License Information{Colors.ENDC}")
+        print(f"")
+        print(f"Gentoo System Updater - {__license__} License")
+        print(f"")
+        print(f"Copyright (c) 2024 {__author__}")
+        print(f"")
+        print(f"MIT License text:")
+        print(f"Permission is hereby granted, free of charge, to any person obtaining")
+        print(f"a copy of this software and associated documentation files (the")
+        print(f"'Software'), to deal in the Software without restriction, including")
+        print(f"without limitation the rights to use, copy, modify, merge, publish,")
+        print(f"distribute, sublicense, and/or sell copies of the Software.")
+        print(f"")
+        print(f"License file: {Colors.OKCYAN}See LICENSE file in repository{Colors.ENDC}")
+        sys.exit(0)
     
     # Handle --repository flag
     if args.repository:
@@ -1919,7 +2029,8 @@ Umgebungsvariablen:
             retry_count=args.retry_count,
             webhook_url=args.notification_webhook,
             max_packages=args.max_packages,
-            custom_mirrors=custom_mirrors
+            custom_mirrors=custom_mirrors,
+            etc_update_mode=args.etc_update_mode
         )
         
         # Nur Module neu gebaut werden sollen

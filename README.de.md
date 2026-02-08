@@ -60,12 +60,12 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 
 ## Installation
 
-### Methode 1: Automatische Installation
+### Methode 1: Automatische Installation (Empfohlen)
 
 ```bash
 git clone https://github.com/roimme65/gentoo-updater.git
 cd gentoo-updater
-sudo ./install.sh
+sudo python3 install.py
 ```
 
 ### Methode 2: Manuelle Installation

@@ -1,3 +1,6 @@
+## v1.4.29 (2026-02-08)
+- Release
+
 ## v1.4.28 (2026-02-08)
 - Release
 
@@ -323,11 +326,12 @@ sudo gentoo-updater --dry-run
 - ⚙️ Konfigurations-Update-Prüfung (._cfg Dateien)
 - 🧪 Dry-Run Modus zum Testen ohne Systemänderungen
 - 🔒 Root-Rechte-Prüfung
-- 📥 **Installations-Script** (`install.sh`):
+- 📥 **Installations-Script** (`install.py`):
   - Automatische Installation und Einrichtung
   - Symlink-Erstellung nach `/usr/local/bin`
   - Prüfung optionaler Abhängigkeiten (eix, gentoolkit)
   - Optionale Installation empfohlener Pakete
+  - Lokale Versionsverwaltung mit `--bump {major|minor|patch}`
 - 📖 Vollständige Dokumentation mit Beispielen
 - 🎯 Kompatibilität mit Gentoo Linux
 
@@ -341,7 +345,10 @@ sudo gentoo-updater --dry-run
 ### Verwendung
 ```bash
 # Installation
-sudo ./install.sh
+sudo python3 install.py
+
+# Version lokal aktualisieren
+python3 install.py --bump patch
 
 # Vollständiges Update
 sudo gentoo-updater
