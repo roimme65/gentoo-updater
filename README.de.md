@@ -301,6 +301,19 @@ USE="... verify-sig"
 - Manipulation wird sofort erkannt
 ```
 
+### Code-Sicherheits-Audit
+
+🔍 **Sicherheitsbericht:** [SECURITY_SCAN.md](SECURITY_SCAN.md)
+
+Detailliertes Sicherheits-Audit des gentoo-updater Quellcodes:
+- ✅ Keine hardcodierten Geheimnisse oder Anmeldedaten
+- ✅ Sichere subprocess-Muster (kein Shell-Injection)
+- ✅ Nur Python-Standardbibliothek (keine externen Abhängigkeiten)
+- ✅ Umfassende Eingabevalidierung
+- ✅ Vollständige Bandit Security-Scanner-Ergebnisse
+
+**In Produktion?** Schaue [SECURITY_SCAN.md](SECURITY_SCAN.md) für Deployment-Empfehlungen an.
+
 **Konfiguration anpassen:**
 
 ```bash

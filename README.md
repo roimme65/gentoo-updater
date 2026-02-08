@@ -300,6 +300,19 @@ USE="... verify-sig"
 - Tampering detected immediately
 ```
 
+### Code Security Audit
+
+🔍 **Security Scan Report:** [SECURITY_SCAN.md](SECURITY_SCAN.md)
+
+Detailed security audit of the gentoo-updater source code:
+- ✅ No hardcoded secrets or credentials
+- ✅ Safe subprocess patterns (no shell injection)
+- ✅ Standard library only (no external dependencies)
+- ✅ Comprehensive input validation
+- ✅ Full Bandit security scanner results
+
+**In Production?** Check [SECURITY_SCAN.md](SECURITY_SCAN.md) for deployment recommendations.
+
 **Customize Configuration:**
 
 ```bash
