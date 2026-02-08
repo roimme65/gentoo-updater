@@ -66,10 +66,10 @@ SYMBOLS = {
     'error': ('✗', '[ERR]') if SUPPORTS_EMOJI else ('[ERR]', '[ERR]'),
     'info': ('ℹ', '[INFO]') if SUPPORTS_EMOJI else ('[INFO]', '[INFO]'),
     'fast': ('🥇', '[#1]') if SUPPORTS_EMOJI else ('[#1]', '[#1]'),
-    'clock': ('⏱️', '[TIME]') if SUPPORTS_EMOJI else ('[TIME]', '[TIME]'),
+    'clock': ('⏱', '[TIME]') if SUPPORTS_EMOJI else ('[TIME]', '[TIME]'),
     'sync': ('🔄', '[SYNC]') if SUPPORTS_EMOJI else ('[SYNC]', '[SYNC]'),
     'package': ('📦', '[PKG]') if SUPPORTS_EMOJI else ('[PKG]', '[PKG]'),
-    'skip': ('⏭️', '[SKIP]') if SUPPORTS_EMOJI else ('[SKIP]', '[SKIP]'),
+    'skip': ('⏭', '[SKIP]') if SUPPORTS_EMOJI else ('[SKIP]', '[SKIP]'),
 }
 
 def symbol(key: str) -> str:
@@ -1573,7 +1573,7 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.26                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.27                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
@@ -1837,7 +1837,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.26')
+                       version='Gentoo Updater v1.4.27')
     
     args = parser.parse_args()
     
