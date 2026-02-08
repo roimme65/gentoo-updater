@@ -6,7 +6,6 @@
 - **Status**: ✅ Vollständig implementiert
 - **Features**:
   - RWTH Aachen (ftp.halifax.rwth-aachen.de) als primärer Distfiles Mirror
-  - NetCologne Rsync Mirror für Portage-Tree Synchronisation
   - Init7 und Ruhr-Uni Bochum als Fallback Mirrors
   - Bis zu 3x schnellere Downloads im deutschsprachigen Raum
   - Automatische Mirror-Priorisierung nach Geschwindigkeit
@@ -33,7 +32,7 @@
 - **Status**: ✅ Vollständig implementiert
 - **Features**:
   - Automatische Erstellung von `/etc/portage/repos.conf/gentoo.conf`
-  - Konfiguration für deutsches Rsync Mirror (NetCologne)
+  - Konfiguration für Portage-Tree Synchronisation
   - [DEFAULT] Section mit main-repo Definition
   - Priority und location Settings
 

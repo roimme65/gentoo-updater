@@ -279,11 +279,9 @@ Gentoo Updater is now pre-configured with optimized German mirrors for maximum d
 |------|--------|----------|-------|
 | 🥇 | RWTH Aachen (ftp.halifax.rwth-aachen.de) | Aachen, Germany | ⚡⚡⚡ Very Fast |
 | 🥈 | Init7 (mirror.init7.net) | Switzerland | ⚡⚡ Fast |
-| 🥉 | NetCologne Cologne (mirror.netcologne.de) | Cologne, Germany | ⚡⚡ Fast |
-| 4️⃣ | Ruhr University Bochum | Bochum, Germany | ⚡ Stable |
+| 🥉 | Ruhr University Bochum | Bochum, Germany | ⚡ Stable |
 
 **Portage Repository (Rsync):**
-- 🥇 NetCologne Cologne (rsync://mirror.netcologne.de/gentoo-portage)
 - 🔄 Fallback: rsync.gentoo.org (Official)
 
 ### verify-sig Security
@@ -311,7 +309,7 @@ GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ ..."
 
 # repos.conf - Portage Tree Mirror
 nano /etc/portage/repos.conf/gentoo.conf
-sync-uri = rsync://mirror.netcologne.de/gentoo-portage
+sync-uri = rsync://rsync.gentoo.org/gentoo-portage
 ```
 
 ### mirrorselect Integration

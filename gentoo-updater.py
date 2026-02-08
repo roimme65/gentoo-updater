@@ -36,6 +36,49 @@ def detect_system_language() -> str:
 
 CURRENT_LANGUAGE = detect_system_language()
 
+# ========================
+# Emoji-Support Erkennung
+# ========================
+
+def detect_emoji_support() -> bool:
+    """Prüft ob das Terminal Emojis unterstützt"""
+    try:
+        # Schreibe ein Emoji und lese es zurück
+        import subprocess
+        result = subprocess.run(
+            ['printf', '🇩🇪'],
+            capture_output=True,
+            text=True
+        )
+        # Wenn das Emoji korrekt ausgegeben wird, unterstützt das Terminal Emojis
+        return len(result.stdout) > 0
+    except:
+        # Im Fehlerfall vorsichtig sein und ASCII verwenden
+        return False
+
+SUPPORTS_EMOJI = detect_emoji_support()
+
+# Emoji-Symbole mit ASCII-Fallbacks
+SYMBOLS = {
+    'germany': ('🇩🇪', '[DE]') if SUPPORTS_EMOJI else ('[DE]', '[DE]'),
+    'checkmark': ('✓', '[OK]') if SUPPORTS_EMOJI else ('[OK]', '[OK]'),
+    'warning': ('⚠', '[WARN]') if SUPPORTS_EMOJI else ('[WARN]', '[WARN]'),
+    'error': ('✗', '[ERR]') if SUPPORTS_EMOJI else ('[ERR]', '[ERR]'),
+    'info': ('ℹ', '[INFO]') if SUPPORTS_EMOJI else ('[INFO]', '[INFO]'),
+    'fast': ('🥇', '[#1]') if SUPPORTS_EMOJI else ('[#1]', '[#1]'),
+    'clock': ('⏱️', '[TIME]') if SUPPORTS_EMOJI else ('[TIME]', '[TIME]'),
+    'sync': ('🔄', '[SYNC]') if SUPPORTS_EMOJI else ('[SYNC]', '[SYNC]'),
+    'package': ('📦', '[PKG]') if SUPPORTS_EMOJI else ('[PKG]', '[PKG]'),
+    'skip': ('⏭️', '[SKIP]') if SUPPORTS_EMOJI else ('[SKIP]', '[SKIP]'),
+}
+
+def symbol(key: str) -> str:
+    """Gibt das richtige Symbol zurück (Emoji oder ASCII)"""
+    if SUPPORTS_EMOJI:
+        return SYMBOLS[key][0]
+    else:
+        return SYMBOLS[key][1]
+
 TRANSLATIONS = {
     'ROOT_ERROR': {
         'de': 'Dieses Skript benötigt Root-Rechte.',
@@ -350,13 +393,15 @@ DEFAULT_GERMAN_MIRRORS_DISTFILES = [
     'https://ftp.halifax.rwth-aachen.de/gentoo/',           # 🥇 RWTH Aachen - sehr schnell
     'https://mirror.init7.net/gentoo/',                      # Init7 - Schweiz
     'http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/', # Ruhr-Uni Bochum
-    'https://mirror.netcologne.de/gentoo-distfiles/',        # NetCologne - Deutschland (Köln)
 ]
 
 # Deutsche und europäische Gentoo Mirrors - RSYNC (Portage-Tree Sync)
 # Für emaint sync -a oder emerge --sync
+# Nach Geschwindigkeit/Zuverlässigkeit sortiert
 DEFAULT_GERMAN_MIRRORS_RSYNC = [
-    'rsync://mirror.netcologne.de/gentoo/',                  # NetCologne Rsync
+    'rsync://rsync.de.gentoo.org/gentoo-portage',           # 🇩🇪 Deutschland (Offiziell)
+    'rsync://ftp.halifax.rwth-aachen.de/gentoo-portage',    # 🥇 RWTH Aachen - sehr schnell
+    'rsync://mirror.init7.net/gentoo-portage',              # 🇨🇭 Init7 - Schweiz
     'rsync://rsync.gentoo.org/gentoo-portage',              # Official Gentoo - Fallback
 ]
 
@@ -822,6 +867,66 @@ class GentooUpdater:
         
         return None
     
+    def configure_rsync_mirrors(self):
+        """Konfiguriert die deutschen RSYNC Mirror in repos.conf/gentoo.conf
+        
+        Setzt rsync.de.gentoo.org als primären Mirror mit deutschen Fallbacks
+        """
+        repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
+        
+        if not os.path.exists(repos_conf_path):
+            self.print_warning(f"repos.conf nicht gefunden: {repos_conf_path}")
+            return
+        
+        try:
+            with open(repos_conf_path, 'r') as f:
+                repos_conf_content = f.read()
+            
+            # Extrahiere aktuellen sync-uri
+            current_sync = None
+            pattern = r'sync-uri\s*=\s*([^\n]+)'
+            match = re.search(pattern, repos_conf_content)
+            if match:
+                current_sync = match.group(1).strip()
+            
+            # Baue neue Fallback-Liste (nur primär Mirror, rsync.de.gentoo.org)
+            # Portage übernimmt automatisch Fallbacks aus repos.conf wenn dieser Mirror ausfällt
+            primary_rsync_mirror = 'rsync://rsync.de.gentoo.org/gentoo-portage'
+            
+            # Ersetze sync-uri mit deutschem Primary Mirror
+            if 'sync-uri' in repos_conf_content:
+                # Ersetze existierende sync-uri
+                updated_content = re.sub(
+                    r'sync-uri\s*=\s*[^\n]+',
+                    f'sync-uri = {primary_rsync_mirror}',
+                    repos_conf_content
+                )
+            else:
+                # Füge neue Zeile am Ende des [gentoo] Block hinzu
+                updated_content = repos_conf_content.rstrip() + f'\nsync-uri = {primary_rsync_mirror}\n'
+            
+            if updated_content != repos_conf_content:
+                # Schreibe mit besseren Fehlerbehandlung
+                try:
+                    with open(repos_conf_path, 'w') as f:
+                        f.write(updated_content)
+                    self.print_success(f"repos.conf aktualisiert mit deutschem RSYNC Mirror (rsync.de.gentoo.org)")
+                    self.logger.info(f"Primärer RSYNC Mirror: {primary_rsync_mirror}")
+                    if current_sync:
+                        self.logger.info(f"Alter Mirror: {current_sync}")
+                except PermissionError as pe:
+                    self.print_warning(f"Keine Berechtigung, repos.conf zu schreiben (Root erforderlich): {pe}")
+                except IOError as ie:
+                    self.print_warning(f"IO-Fehler beim Schreiben von repos.conf: {ie}")
+            else:
+                self.logger.info(f"repos.conf ist bereits mit deutschem Mirror konfiguriert")
+        
+        except PermissionError as pe:
+            self.print_warning(f"Keine Berechtigung, repos.conf zu lesen: {pe}")
+        except Exception as e:
+            self.print_warning(f"Fehler bei repos.conf-Konfiguration: {e}")
+            self.logger.exception("Exception Details:")
+    
     def log_mirrors_info(self):
         """Loggt die tatsächlich verwendeten Gentoo Mirrors"""
         # Zeige Distfiles Mirror
@@ -829,7 +934,7 @@ class GentooUpdater:
         
         # Prüfe ob custom_mirrors oder defaults verwendet werden
         if self.custom_mirrors and self.custom_mirrors == DEFAULT_GERMAN_MIRRORS_DISTFILES:
-            self.print_success("🇩🇪 Verwende deutsche Gentoo Mirrors als Standard!")
+            self.print_success(f"{symbol('germany')} Verwende deutsche Gentoo Mirrors als Standard!")
         
         # Gibt GENTOO_MIRRORS aus  
         mirrors = self.get_gentoo_mirrors()
@@ -994,6 +1099,9 @@ class GentooUpdater:
                     self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
             except Exception as e:
                 self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
+        
+        # Aktualisiere repos.conf mit deutschem RSYNC Mirror
+        self.configure_rsync_mirrors()
         
         # Verwende Standard-Sync mit repos.conf (Portage-Tree über rsync)
         success, output = self.run_command(
@@ -1358,23 +1466,23 @@ class GentooUpdater:
             print()
         
         if self.stats['kernel_updated']:
-            print(f"{Colors.WARNING}⚠ Kernel wurde aktualisiert{Colors.ENDC}")
+            print(f"{Colors.WARNING}{symbol('warning')} Kernel wurde aktualisiert{Colors.ENDC}")
             print()
         
         if self.stats['modules_rebuilt']:
-            print(f"{Colors.OKGREEN}✓ Kernel-Module neu gebaut{Colors.ENDC}")
+            print(f"{Colors.OKGREEN}{symbol('checkmark')} Kernel-Module neu gebaut{Colors.ENDC}")
             print()
         
         if self.stats['warnings']:
             print(f"{Colors.WARNING}Warnungen ({len(self.stats['warnings'])}):{Colors.ENDC}")
             for warn in self.stats['warnings'][:5]:
-                print(f"  ⚠ {warn}")
+                print(f"  {symbol('warning')} {warn}")
             print()
         
         if self.stats['errors']:
             print(f"{Colors.FAIL}Fehler ({len(self.stats['errors'])}):{Colors.ENDC}")
             for err in self.stats['errors']:
-                print(f"  ✗ {err}")
+                print(f"  {symbol('error')} {err}")
             print()
         
         print(f"{Colors.BOLD}Log-Datei:{Colors.ENDC} {self.log_file}")
@@ -1465,22 +1573,22 @@ Details siehe: {self.log_file}
         
         print(f"{Colors.BOLD}{Colors.OKCYAN}")
         print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║           GENTOO SYSTEM UPDATER v1.4.25                            ║")
+        print("║           GENTOO SYSTEM UPDATER v1.4.26                            ║")
         print("╚════════════════════════════════════════════════════════════════════╝")
         print(f"{Colors.ENDC}")
         
         if self.timeout:
-            print(f"{Colors.OKCYAN}⏱️  Timeout: {self.timeout} Sekunden{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{symbol('clock')} Timeout: {self.timeout} Sekunden{Colors.ENDC}")
         if self.retry_count > 1:
-            print(f"{Colors.OKCYAN}🔄 Retry-Count: {self.retry_count}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{symbol('sync')} Retry-Count: {self.retry_count}{Colors.ENDC}")
         if self.max_packages:
-            print(f"{Colors.OKCYAN}📦 Max Packages: {self.max_packages}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{symbol('package')} Max Packages: {self.max_packages}{Colors.ENDC}")
         
         # Prüfe ob mirrorselect verfügbar ist und informiere Benutzer
         try:
             subprocess.run(["which", "mirrorselect"], check=True,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
-            print(f"{Colors.OKGREEN}{_('MIRRORSELECT_AVAILABLE')}{Colors.ENDC}")
+            print(f"{Colors.OKCYAN}{_('MIRRORSELECT_AVAILABLE')}{Colors.ENDC}")
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             print(f"{Colors.WARNING}{_('MIRRORSELECT_NOT_INSTALLED')}{Colors.ENDC}")
             print(f"{Colors.OKCYAN}{_('MIRRORSELECT_INSTALL_TIP')}{Colors.ENDC}")
@@ -1506,13 +1614,13 @@ Details siehe: {self.log_file}
                     update_success = False
                     sys.exit(1)
             else:
-                print(f"{Colors.WARNING}⏭️  Skipping repository synchronisation (--skip-sync){Colors.ENDC}")
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping repository synchronisation (--skip-sync){Colors.ENDC}")
             
             # Schritt 2: eix-update (wenn nicht übersprungen)
             if not self.skip_eix:
                 self.update_eix()
             else:
-                print(f"{Colors.WARNING}⏭️  Skipping eix update (--skip-eix){Colors.ENDC}")
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping eix update (--skip-eix){Colors.ENDC}")
             
             # Schritt 3: Prüfe Updates (nur wenn nicht --skip-update)
             if not self.skip_update:
@@ -1604,7 +1712,12 @@ Deutsche Mirrors:
     - 🥇 RWTH Aachen (https://ftp.halifax.rwth-aachen.de/gentoo/) - sehr schnell
     - Init7 Schweiz (https://mirror.init7.net/gentoo/)
     - Ruhr-Universität Bochum (http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/)
-    - NetCologne Köln (https://mirror.netcologne.de/gentoo-distfiles/)
+  
+  Portage-Tree (RSYNC):
+    - 🇩🇪 Deutschland (rsync://rsync.de.gentoo.org/gentoo-portage) - offiziell
+    - 🥇 RWTH Aachen (rsync://ftp.halifax.rwth-aachen.de/gentoo-portage) - sehr schnell
+    - 🇨🇭 Init7 Schweiz (rsync://mirror.init7.net/gentoo-portage)
+    - Official Gentoo (rsync://rsync.gentoo.org/gentoo-portage) - Fallback
   
   Mit mirrorselect interaktiv auswählen:
     sudo emerge -av app-portage/mirrorselect  # Eine einzelne Installation
@@ -1724,7 +1837,7 @@ Umgebungsvariablen:
     
     parser.add_argument('--version',
                        action='version',
-                       version='Gentoo Updater v1.4.25')
+                       version='Gentoo Updater v1.4.26')
     
     args = parser.parse_args()
     

@@ -280,11 +280,9 @@ Gentoo-Updater ist jetzt mit optimierten deutschen Mirrors vorkonfiguriert für 
 |------|--------|-----|-----------------|
 | 🥇 | RWTH Aachen (ftp.halifax.rwth-aachen.de) | Aachen, Germany | ⚡⚡⚡ Sehr schnell |
 | 🥈 | Init7 (mirror.init7.net) | Schweiz | ⚡⚡ Schnell |
-| 🥉 | NetCologne Köln (mirror.netcologne.de) | Köln, Germany | ⚡⚡ Schnell |
-| 4️⃣ | Ruhr-Universität Bochum | Bochum, Germany | ⚡ Stabil |
+| 🥉 | Ruhr-Universität Bochum | Bochum, Germany | ⚡ Stabil |
 
 **Portage-Repository (Rsync):**
-- 🥇 NetCologne Köln (rsync://mirror.netcologne.de/gentoo-portage)
 - 🔄 Fallback: rsync.gentoo.org (Official)
 
 ### verify-sig Security
@@ -308,11 +306,21 @@ USE="... verify-sig"
 ```bash
 # make.conf - Distfiles Mirror
 nano /etc/portage/make.conf
-GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ ..."
+GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ https://mirror.init7.net/gentoo/ http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/"
 
 # repos.conf - Portage-Tree Mirror
 nano /etc/portage/repos.conf/gentoo.conf
-sync-uri = rsync://mirror.netcologne.de/gentoo-portage
+# German Portage Repository Mirrors
+# Primary: rsync.de.gentoo.org (German Official Mirror)
+
+[DEFAULT]
+main-repo = gentoo
+
+[gentoo]
+location = /var/db/repos/gentoo
+sync-type = rsync
+sync-uri = rsync://rsync.de.gentoo.org/gentoo-portage
+priority = 50
 ```
 
 ### mirrorselect Integration
