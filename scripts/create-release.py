@@ -146,70 +146,132 @@ class ReleaseManager:
             return False, str(e)
     
     def generate_release_notes(self) -> str:
-        """Generiert Release-Notes aus Git-Commits"""
-        print_info("Generiere Release-Notes...")
+        """Generiert Release-Notes aus Git-Commits mit detaillierten Diff-Informationen"""
+        print_info("Generiere Release-Notes aus Git-Commits...")
         
         # Hole letzten Tag
-        success, last_tag = self.run_command(['git', 'tag', '--list', '-n0', '--sort=-version:refname'], "Get last tag")
+        success, last_tag_output = self.run_command(['git', 'tag', '--list', '--sort=-version:refname'], "Get last tag")
         
-        if success and last_tag.strip():
-            last_version = last_tag.strip().split('\n')[0]
+        if success and last_tag_output.strip():
+            last_version = last_tag_output.strip().split('\n')[0]
+            print_info(f"Letzter Tag: {last_version}")
         else:
-            last_version = 'HEAD'
+            last_version = None
+            print_info("Kein vorheriger Tag gefunden, verwende alle Commits")
         
-        # Hole Commits seit letztem Tag
-        success, commits = self.run_command(['git', 'log', f'{last_version}..HEAD', '--pretty=format:%s'], "Get commits")
+        # Hole Commits seit letztem Tag mit detaillierten Informationen
+        if last_version:
+            log_range = f'{last_version}..HEAD'
+        else:
+            log_range = 'HEAD'
         
-        if not success or not commits.strip():
-            return f"Release v{self.new_version}"
+        success, commits_output = self.run_command(
+            ['git', 'log', log_range, '--pretty=format:%h|%s|%b|%an|%ad', '--date=short'],
+            "Get commits"
+        )
+        
+        if not success or not commits_output.strip():
+            print_warning("Keine Commits gefunden")
+            return f"# Release v{self.new_version}\n\n*Keine Änderungen dokumentiert*\n\n**Veröffentlicht:** {datetime.now().strftime('%d. %B %Y')}\n"
+        
+        # Parse Commits
+        commits_list = []
+        for line in commits_output.strip().split('\n'):
+            if not line:
+                continue
+            
+            parts = line.split('|')
+            if len(parts) >= 3:
+                commit_hash = parts[0]
+                subject = parts[1]
+                body = parts[2] if len(parts) > 2 else ""
+                author = parts[3] if len(parts) > 3 else "Unknown"
+                date = parts[4] if len(parts) > 4 else ""
+                
+                commits_list.append({
+                    'hash': commit_hash,
+                    'subject': subject,
+                    'body': body,
+                    'author': author,
+                    'date': date
+                })
+        
+        print_info(f"Gefundene Commits: {len(commits_list)}")
         
         # Kategorisiere Commits
         features = []
         fixes = []
         improvements = []
+        security = []
+        docs = []
         other = []
         
-        for commit in commits.strip().split('\n'):
-            if not commit:
-                continue
+        for commit in commits_list:
+            subject = commit['subject'].lower()
+            full_commit = f"{commit['subject']} ({commit['hash']})"
             
-            if commit.lower().startswith(('feat:', 'feature:', 'add:', '✨')):
-                features.append(commit)
-            elif commit.lower().startswith(('fix:', 'bug:', '🐛')):
-                fixes.append(commit)
-            elif commit.lower().startswith(('improve:', 'perf:', '⚡')):
-                improvements.append(commit)
-            else:
-                other.append(commit)
+            if any(subject.startswith(prefix) for prefix in ['feat:', 'feature:', 'add:', '✨', '🆕']):
+                features.append(full_commit)
+            elif any(subject.startswith(prefix) for prefix in ['fix:', 'bugfix:', 'bug:', '🐛', '🔧']):
+                fixes.append(full_commit)
+            elif any(subject.startswith(prefix) for prefix in ['improve:', 'perf:', '⚡', 'refactor:', 'refactor']):
+                improvements.append(full_commit)
+            elif any(subject.startswith(prefix) for prefix in ['sec:', 'security:', '🔐']):
+                security.append(full_commit)
+            elif any(subject.startswith(prefix) for prefix in ['docs:', 'doc:', 'readme:', '📝', 'documentation:']):
+                docs.append(full_commit)
+            elif 'release' not in subject and 'version' not in subject and 'bump' not in subject:
+                # Ignoriere Release-Commits und füge alles andere zu "other" hinzu
+                other.append(full_commit)
         
         # Baue Release-Notes
         notes = f"# Release v{self.new_version}\n\n"
         
+        # Zusammenfassung
+        notes += f"**Veröffentlicht:** {datetime.now().strftime('%d. %B %Y')}\n"
+        notes += f"**Commits:** {len(commits_list)}\n\n"
+        
+        # Features
         if features:
             notes += "## ✨ Neue Features\n"
             for f in features:
                 notes += f"- {f}\n"
             notes += "\n"
         
+        # Security
+        if security:
+            notes += "## 🔐 Security\n"
+            for s in security:
+                notes += f"- {s}\n"
+            notes += "\n"
+        
+        # Bugfixes
         if fixes:
             notes += "## 🐛 Bugfixes\n"
             for fix in fixes:
                 notes += f"- {fix}\n"
             notes += "\n"
         
+        # Verbesserungen
         if improvements:
             notes += "## ⚡ Verbesserungen\n"
             for imp in improvements:
                 notes += f"- {imp}\n"
             notes += "\n"
         
+        # Dokumentation
+        if docs:
+            notes += "## 📝 Dokumentation\n"
+            for doc in docs:
+                notes += f"- {doc}\n"
+            notes += "\n"
+        
+        # Andere Änderungen
         if other:
-            notes += "## 📝 Andere Änderungen\n"
+            notes += "## 📋 Andere Änderungen\n"
             for o in other:
                 notes += f"- {o}\n"
             notes += "\n"
-        
-        notes += f"**Veröffentlicht:** {datetime.now().strftime('%d. %B %Y')}\n"
         
         return notes
     
