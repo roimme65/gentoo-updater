@@ -2198,10 +2198,12 @@ Umgebungsvariablen:
     # Prüfe Internet-Verbindung, sofern nicht übersprungen
     skip_internet_check = getattr(args, 'skip_internet_check', False) or env_skip_internet_check
     if not skip_internet_check:
+        print(f"\n{Colors.OKCYAN}🌐 Prüfe Internetverbindung...{Colors.ENDC}")
         if not check_internet_connection():
             print(f"{Colors.FAIL}{symbol('error')} {translate('INTERNET_CHECK_ERROR')}{Colors.ENDC}")
             print(f"{Colors.WARNING}{symbol('info')} {translate('INTERNET_CHECK_INFO')}{Colors.ENDC}")
             sys.exit(1)
+        print(f"{Colors.OKGREEN}{symbol('checkmark')} Internetverbindung verfügbar{Colors.ENDC}\n")
     
     # Parse custom mirrors if provided (or use German mirrors as default)
     custom_mirrors = None
