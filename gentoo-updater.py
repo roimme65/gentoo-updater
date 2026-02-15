@@ -4,7 +4,7 @@ Gentoo System Updater
 Automatisches Update-Skript für Gentoo Linux
 """
 
-__version__ = "1.4.31"
+__version__ = "1.4.33"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 
@@ -17,6 +17,7 @@ import time
 import json
 import re
 import locale
+import socket
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
@@ -91,6 +92,14 @@ TRANSLATIONS = {
     'ROOT_INFO': {
         'de': 'Bitte mit sudo ausführen: sudo gentoo-updater',
         'en': 'Please run with sudo: sudo gentoo-updater'
+    },
+    'INTERNET_CHECK_ERROR': {
+        'de': 'Keine Internetverbindung verfügbar!',
+        'en': 'No internet connection available!'
+    },
+    'INTERNET_CHECK_INFO': {
+        'de': 'Dieses Skript benötigt eine aktive Internetverbindung für Repository-Synchronisation und Paket-Downloads.',
+        'en': 'This script requires an active internet connection for repository synchronization and package downloads.'
     },
     'DISK_SPACE_INFO': {
         'de': 'Freier Speicherplatz: {free_gb:.2f} GB',
@@ -378,6 +387,141 @@ def _(key: str, **kwargs) -> str:
 
 
 # ========================
+# Hilfe-Texte für Parameter (Deutsch/Englisch)
+# ========================
+
+HELP_TEXTS = {
+    'verbose': {
+        'de': 'Ausführliche Ausgabe',
+        'en': 'Verbose output'
+    },
+    'dry_run': {
+        'de': 'Zeige nur was gemacht würde, ohne es auszuführen',
+        'en': 'Show what would be done without actually performing the update'
+    },
+    'rebuild_modules': {
+        'de': 'Erzwingt Neucompilierung der Kernel-Module',
+        'en': 'Force rebuild of kernel modules'
+    },
+    'create_config': {
+        'de': 'Erstellt Default-Konfigurationsdatei',
+        'en': 'Create a default configuration file'
+    },
+    'config': {
+        'de': 'Pfad zur Konfigurationsdatei',
+        'en': 'Path to the configuration file'
+    },
+    'log_level': {
+        'de': 'Logging-Stufe (Standard: INFO)',
+        'en': 'Logging level (default: INFO)'
+    },
+    'skip_sync': {
+        'de': 'Überspringe Repository-Synchronisation',
+        'en': 'Skip repository synchronisation'
+    },
+    'skip_update': {
+        'de': 'Überspringe System-Update (@world)',
+        'en': 'Skip system update (@world)'
+    },
+    'skip_eix': {
+        'de': 'Überspringe eix-Datenbank-Update',
+        'en': 'Skip eix database update'
+    },
+    'skip_cleanup': {
+        'de': 'Überspringe depclean',
+        'en': 'Skip depclean'
+    },
+    'skip_revdep': {
+        'de': 'Überspringe revdep-rebuild',
+        'en': 'Skip revdep-rebuild'
+    },
+    'skip_internet_check': {
+        'de': 'Überspringe Internetverbindungs-Prüfung (nützlich für Offline-Tests)',
+        'en': 'Skip internet connection check (useful for offline tests)'
+    },
+    'only_sync': {
+        'de': 'Führe nur Repository-Synchronisation durch',
+        'en': 'Execute only repository synchronisation'
+    },
+    'only_update': {
+        'de': 'Führe nur System-Update (@world) durch',
+        'en': 'Execute only system update (@world)'
+    },
+    'only_cleanup': {
+        'de': 'Führe nur depclean durch',
+        'en': 'Execute only depclean'
+    },
+    'max_packages': {
+        'de': 'Begrenze Anzahl der zu aktualisierenden Pakete',
+        'en': 'Limit number of packages to update'
+    },
+    'timeout': {
+        'de': 'Timeout in Sekunden für emerge-Operationen',
+        'en': 'Timeout in seconds for emerge operations'
+    },
+    'retry_count': {
+        'de': 'Anzahl der Wiederholungsversuche bei Fehler (Standard: 1)',
+        'en': 'Number of retries on failure (default: 1)'
+    },
+    'notification_webhook': {
+        'de': 'Sende Abschluss-Benachrichtigung an Webhook-URL',
+        'en': 'Send completion notification to webhook URL'
+    },
+    'parallel_jobs': {
+        'de': 'Überschreibe emerge --jobs Einstellung',
+        'en': 'Override emerge --jobs setting'
+    },
+    'lang': {
+        'de': 'Sprache (de/en, Standard: automatische Erkennung aus System-Locale)',
+        'en': 'Language (de/en, default: auto-detect from system locale)'
+    },
+    'mirrors': {
+        'de': 'Benutzerdefinierte Gentoo Mirrors (durch Komma getrennt)',
+        'en': 'Custom Gentoo mirrors (comma-separated URLs)'
+    },
+    'use_mirrorselect': {
+        'de': 'Nutze mirrorselect für automatische Auswahl des schnellsten Mirrors',
+        'en': 'Use mirrorselect for automatic selection of fastest mirror'
+    },
+    'etc_update_mode': {
+        'de': 'Modus für Konfigurationsdateien-Updates (Standard: interaktiv)',
+        'en': 'Mode for configuration file updates (default: interactive)'
+    },
+    'repository': {
+        'de': 'Zeige GitHub-Repository-Informationen',
+        'en': 'Show GitHub repository information'
+    },
+    'support': {
+        'de': 'Zeige Support- und Issue-Template-Links',
+        'en': 'Show support and issue template links'
+    },
+    'author': {
+        'de': 'Zeige Autor- und Versions-Informationen',
+        'en': 'Show author and version information'
+    },
+    'license': {
+        'de': 'Zeige Lizenz-Informationen',
+        'en': 'Show license information'
+    }
+}
+
+
+def get_help_text(key: str) -> str:
+    """
+    Gibt Hilfe-Text basierend auf aktueller Sprache zurück
+    
+    Args:
+        key: Key im HELP_TEXTS Dictionary
+        
+    Returns:
+        Hilfe-Text in CURRENT_LANGUAGE oder Englisch als Fallback
+    """
+    if key not in HELP_TEXTS:
+        return key
+    return HELP_TEXTS[key].get(CURRENT_LANGUAGE, HELP_TEXTS[key].get('en', key))
+
+
+# ========================
 # GitHub Integration
 # ========================
 
@@ -426,6 +570,46 @@ class Colors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+def check_internet_connection() -> bool:
+    """
+    Prüft ob eine Internetverbindung verfügbar ist.
+    Versucht DNS-Lookups für mehrere bekannte Server.
+    
+    Returns:
+        bool: True wenn Internetverbindung verfügbar ist, False sonst
+    """
+    # Mehrere Hosts zum Testen
+    test_hosts = [
+        ('8.8.8.8', 53),           # Google DNS
+        ('1.1.1.1', 53),           # Cloudflare DNS
+        ('9.9.9.9', 53),           # Quad9 DNS
+        ('gentoo.org', 80),        # Gentoo.org HTTP
+    ]
+    
+    for host, port in test_hosts:
+        try:
+            # Versucht Verbindung zu öffnen (Timeout: 3 Sekunden)
+            socket.create_connection((host, port), timeout=3)
+            return True
+        except (socket.timeout, socket.error, OSError):
+            # Host nicht erreichbar, versuche nächsten
+            continue
+    
+    # Kein Host war erreichbar
+    return False
+
+
+def translate(key: str, **kwargs) -> str:
+    """Übersetzt einen Text basierend auf der Systemsprache"""
+    try:
+        text = TRANSLATIONS[key].get(CURRENT_LANGUAGE, TRANSLATIONS[key].get('en', ''))
+        if kwargs:
+            return text.format(**kwargs)
+        return text
+    except (KeyError, ValueError):
+        return f"[TRANSLATION MISSING: {key}]"
 
 
 class Config:
@@ -1753,6 +1937,19 @@ Details siehe: {self.log_file}
 
 def main():
     """Hauptfunktion"""
+    # Vorverarbeitung: Prüfe auf --lang Parameter bevor argparser lädt
+    # Das erlaubt es, Hilfe-Texte in der richtigen Sprache anzuzeigen
+    import sys
+    if '--lang' in sys.argv:
+        try:
+            lang_index = sys.argv.index('--lang')
+            if lang_index + 1 < len(sys.argv):
+                lang = sys.argv[lang_index + 1]
+                if lang in ['de', 'en']:
+                    globals()['CURRENT_LANGUAGE'] = lang
+        except (ValueError, IndexError):
+            pass
+    
     # Environment-Variable Support
     env_dry_run = os.getenv('GENTOO_UPDATER_DRY_RUN', 'false').lower() == 'true'
     env_verbose = os.getenv('GENTOO_UPDATER_VERBOSE', 'false').lower() == 'true'
@@ -1761,6 +1958,7 @@ def main():
     env_retry = os.getenv('GENTOO_UPDATER_RETRY_COUNT', '1')
     env_webhook = os.getenv('GENTOO_UPDATER_WEBHOOK')
     env_parallel = os.getenv('GENTOO_UPDATER_PARALLEL_JOBS')
+    env_skip_internet_check = os.getenv('GENTOO_UPDATER_SKIP_INTERNET_CHECK', 'false').lower() == 'true'
     
     parser = argparse.ArgumentParser(
         description='Gentoo System Updater - Automatisiert System-Updates',
@@ -1801,6 +1999,7 @@ Umgebungsvariablen:
   GENTOO_UPDATER_LOG_LEVEL=DEBUG         # Log-Level (DEBUG/INFO/WARNING/ERROR)
   GENTOO_UPDATER_TIMEOUT=3600            # Timeout in Sekunden
   GENTOO_UPDATER_RETRY_COUNT=3           # Wiederholung bei Fehler
+  GENTOO_UPDATER_SKIP_INTERNET_CHECK=true # Überspringe Internetverbindungs-Prüfung
   GENTOO_UPDATER_WEBHOOK=URL             # Webhook-URL
   GENTOO_UPDATER_PARALLEL_JOBS=4         # Parallele Jobs
   GENTOO_UPDATER_MIRRORS=URL1,URL2       # Custom Mirror (komma-getrennt)
@@ -1809,115 +2008,116 @@ Umgebungsvariablen:
     
     parser.add_argument('-v', '--verbose', 
                        action='store_true',
-                       help='Ausführliche Ausgabe')
+                       help=get_help_text('verbose'))
     parser.add_argument('-n', '--dry-run',
                        action='store_true', 
-                       help='Zeige nur was gemacht würde, ohne es auszuführen')
+                       help=get_help_text('dry_run'))
     parser.add_argument('--rebuild-modules',
                        action='store_true',
-                       help='Erzwingt Neucompilierung der Kernel-Module')
+                       help=get_help_text('rebuild_modules'))
     parser.add_argument('--create-config',
                        action='store_true',
-                       help='Erstellt Default-Konfigurationsdatei')
+                       help=get_help_text('create_config'))
     parser.add_argument('--config',
                        type=str,
                        default='/etc/gentoo-updater.conf',
-                       help='Pfad zur Konfigurationsdatei')
+                       help=get_help_text('config'))
     
     # Parameter für v1.4.2
     parser.add_argument('--log-level',
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                        default='INFO',
-                       help='Logging-Stufe (default: INFO)')
+                       help=get_help_text('log_level'))
     
     parser.add_argument('--skip-sync',
                        action='store_true',
-                       help='Skip repository synchronisation')
+                       help=get_help_text('skip_sync'))
     parser.add_argument('--skip-update',
                        action='store_true',
-                       help='Skip system update (@world)')
+                       help=get_help_text('skip_update'))
     parser.add_argument('--skip-eix',
                        action='store_true',
-                       help='Skip eix database update')
+                       help=get_help_text('skip_eix'))
     parser.add_argument('--skip-cleanup',
                        action='store_true',
-                       help='Skip depclean')
+                       help=get_help_text('skip_cleanup'))
     parser.add_argument('--skip-revdep',
                        action='store_true',
-                       help='Skip revdep-rebuild')
+                       help=get_help_text('skip_revdep'))
+    
+    parser.add_argument('--skip-internet-check',
+                       action='store_true',
+                       help=get_help_text('skip_internet_check'))
     
     parser.add_argument('--only-sync',
                        action='store_true',
-                       help='Execute only repository synchronisation')
+                       help=get_help_text('only_sync'))
     parser.add_argument('--only-update',
                        action='store_true',
-                       help='Execute only system update (@world)')
+                       help=get_help_text('only_update'))
     parser.add_argument('--only-cleanup',
                        action='store_true',
-                       help='Execute only depclean')
+                       help=get_help_text('only_cleanup'))
     
     parser.add_argument('--max-packages',
                        type=int,
                        default=None,
-                       help='Limit number of packages to update')
+                       help=get_help_text('max_packages'))
     
     parser.add_argument('--timeout',
                        type=int,
                        default=None,
-                       help='Timeout in seconds for emerge operations')
+                       help=get_help_text('timeout'))
     
     parser.add_argument('--retry-count',
                        type=int,
                        default=1,
-                       help='Number of retries on failure (default: 1)')
+                       help=get_help_text('retry_count'))
     
     parser.add_argument('--notification-webhook',
                        type=str,
                        default=None,
-                       help='Send completion notification to webhook URL')
+                       help=get_help_text('notification_webhook'))
     
     parser.add_argument('--parallel-jobs',
                        type=int,
                        default=None,
-                       help='Override emerge --jobs setting')
+                       help=get_help_text('parallel_jobs'))
     
     parser.add_argument('--lang',
                        choices=['de', 'en'],
                        default=None,
-                       help='Language (de/en, default: auto-detect from system locale)')
+                       help=get_help_text('lang'))
     
     parser.add_argument('--mirrors',
                        type=str,
                        default=None,
-                       help='Custom Gentoo mirrors (comma-separated URLs)')
+                       help=get_help_text('mirrors'))
     
     parser.add_argument('--use-mirrorselect',
                        action='store_true',
-                       help='Nutze mirrorselect für automatische Auswahl des schnellsten Mirrors')
+                       help=get_help_text('use_mirrorselect'))
     
     parser.add_argument('--etc-update-mode',
                        choices=['interactive', 'auto', 'skip'],
                        default='interactive',
-                       help='Modus für Konfigurationsdateien-Updates (default: interactive)\n' +
-                            '  interactive: Benutzer wird interaktiv gefragt\n' +
-                            '  auto: Automatische Aktualisierung aller Dateien\n' +
-                            '  skip: Keine Aktualisierung, nur Benachrichtigung')
+                       help=get_help_text('etc_update_mode'))
     
     parser.add_argument('--repository',
                        action='store_true',
-                       help='Show GitHub repository information')
+                       help=get_help_text('repository'))
     
     parser.add_argument('--support',
                        action='store_true',
-                       help='Show support and issue template links')
+                       help=get_help_text('support'))
     
     parser.add_argument('--author',
                        action='store_true',
-                       help='Show author and version information')
+                       help=get_help_text('author'))
     
     parser.add_argument('--license',
                        action='store_true',
-                       help='Show license information')
+                       help=get_help_text('license'))
     
     parser.add_argument('--version',
                        action='version',
@@ -1991,6 +2191,17 @@ Umgebungsvariablen:
         args.notification_webhook = env_webhook
     if env_parallel:
         args.parallel_jobs = int(env_parallel) if env_parallel else None
+    if env_skip_internet_check:
+        args.skip_internet_check = True
+    
+    # ===== KRITISCHE CHECKS: INTERNET-VERBINDUNG =====
+    # Prüfe Internet-Verbindung, sofern nicht übersprungen
+    skip_internet_check = getattr(args, 'skip_internet_check', False) or env_skip_internet_check
+    if not skip_internet_check:
+        if not check_internet_connection():
+            print(f"{Colors.FAIL}{symbol('error')} {translate('INTERNET_CHECK_ERROR')}{Colors.ENDC}")
+            print(f"{Colors.WARNING}{symbol('info')} {translate('INTERNET_CHECK_INFO')}{Colors.ENDC}")
+            sys.exit(1)
     
     # Parse custom mirrors if provided (or use German mirrors as default)
     custom_mirrors = None

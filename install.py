@@ -13,7 +13,7 @@ import argparse
 from pathlib import Path
 
 # Versionsverwaltung - synchronisiert mit gentoo-updater.py
-__version__ = "1.4.31"
+__version__ = "1.4.33"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 

@@ -24,6 +24,7 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 - 💾 **Automatic Backups** of important configuration files
 - 🔍 **Blocked Packages Check** before updates
 - ⚠️ **Critical Package Warning** (gcc, glibc, Python)
+- 🌐 **Internet Connection Check** (automatic, before starting updates)
 - 📝 **Full Logging System** with JSON export
 - 🎯 **Robust Error Handling** with detailed logs
 
@@ -41,7 +42,7 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 
 ### 🆕 v1.4.0 Advanced Parameters
 - 🎛️ **--log-level** (DEBUG/INFO/WARNING/ERROR)
-- ⏭️ **--skip-*** options (sync, update, eix, cleanup, revdep)
+- ⏭️ **--skip-*** options (sync, update, eix, cleanup, revdep, internet-check)
 - 🎯 **--only-*** options (execute specific steps only)
 - 📦 **--max-packages N** (limit updates)
 - ⏱️ **--timeout SECONDS** (set emerge timeout)
@@ -140,6 +141,9 @@ sudo gentoo-updater --log-level DEBUG
 # Skip specific steps
 sudo gentoo-updater --skip-cleanup --skip-revdep
 
+# Skip internet connection check (useful for offline systems)
+sudo gentoo-updater --skip-internet-check
+
 # Execute only specific steps
 sudo gentoo-updater --only-sync      # Only repository sync
 sudo gentoo-updater --only-update    # Only system update
@@ -177,6 +181,9 @@ GENTOO_UPDATER_RETRY_COUNT=3 sudo gentoo-updater
 
 # Override parallel jobs
 GENTOO_UPDATER_PARALLEL_JOBS=4 sudo gentoo-updater
+
+# Skip internet connection check
+GENTOO_UPDATER_SKIP_INTERNET_CHECK=true sudo gentoo-updater
 ```
 
 ### Kernel Module Recompilation

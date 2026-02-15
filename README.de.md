@@ -24,6 +24,7 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 - 💾 **Automatische Backups** wichtiger Konfigurationsdateien
 - 🔍 **Blockierte Pakete Prüfung** vor Updates
 - ⚠️ **Kritische Paket-Warnung** (gcc, glibc, Python)
+- 🌐 **Internetverbindungs-Prüfung** (automatisch vor Update-Start)
 - 📝 **Vollständiges Logging-System** mit JSON-Export
 - 🎯 **Robuste Fehlerbehandlung** mit detaillierten Logs
 
