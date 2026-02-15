@@ -1,6 +1,6 @@
 # 🔒 Security Scan Report - gentoo-updater
 
-**Scan Date:** 2026-02-08  
+**Scan Date:** 2026-02-15  
 **Repository:** `gentoo-updater` (Public)  
 **Status:** ✅ **SAFE FOR PRODUCTION**
 
@@ -325,11 +325,11 @@ If using in production environments:
 
 ### Scanned Files
 
-• `gentoo-updater.py` (1,628 lines) - Main update orchestrator
-• `install.py` (385 lines) - Installation and version management
-• `scripts/create-release.py` (included in scans)
+• `gentoo-updater.py` (2,279 lines) - Main update orchestrator
+• `install.py` (473 lines) - Installation and version management
+• `scripts/create-release.py` (541 lines) - Release automation tooling
 • Configuration handling analysis
-• Total source reviewed: 2,013 lines
+• Total source reviewed: 2,576 LOC (Bandit code metrics)
 
 ### Exclusions
 
@@ -347,27 +347,28 @@ The following were intentionally excluded from security analysis:
 
 ```
 Tool: Bandit v1.9.3
-Python Version: 3.13.11
-Run Date: 2026-02-08 17:21:08
+Python Version: 3.14.0
+Run Date: 2026-02-15 18:59:32
 
 Scanned Files:
-├─ gentoo-updater.py (1,628 lines)
-└─ install.py (385 lines)
+├─ gentoo-updater.py
+├─ install.py
+└─ scripts/create-release.py
 
-Total Issues:      50
+Total Issues:      56
 ├─ Severity High:   0 ✅
 ├─ Severity Medium: 1 (chmod permissions - see B103 below)
-└─ Severity Low:   49 (All False Positives ✅)
+└─ Severity Low:   55 (Expected findings / false positives)
 
 Code Metrics:
-├─ Total Lines: 2,013 (combined)
+├─ Total Lines: 2,576 (Bandit LOC)
 ├─ Skipped Lines: 0
 └─ Issues Skipped: 0
 ```
 
 ### Issue Breakdown
 
-#### B404: subprocess module usage (5 instances) - FALSE POSITIVE ✅
+#### B404: subprocess module usage (4 instances) - FALSE POSITIVE ✅
 
 ```
 Location: gentoo-updater.py:7 (and 4 more)
@@ -443,7 +444,7 @@ Analysis:
 Verdict: Known false positive for standard Gentoo tooling
 ```
 
-#### B603: subprocess without explicit shell=True (21 instances) - FALSE POSITIVE ✅
+#### B603: subprocess without explicit shell=True (27 instances) - FALSE POSITIVE ✅
 
 ```
 Analysis:
@@ -478,14 +479,14 @@ Example (SAFE pattern - original):
 
 ✅ **NO REAL VULNERABILITIES FOUND**
 
-All 50 reported issues are either known Bandit false positives for safe patterns or expected findings:
-- Safe subprocess calls with argument arrays (49 instances)
+All 56 reported issues are either known Bandit false positives for safe patterns or expected findings:
+- Safe subprocess calls with argument arrays (27 instances via B603)
 - System binaries only (no untrusted executables)
 - No shell execution parameter set
 - No input injection vectors present
 - All tools are standard on Gentoo systems
 - 1 Medium severity (chmod 0o755) is standard for executable installation
-- New install.py also follows safe subprocess patterns
+- install.py and scripts/create-release.py both follow safe subprocess patterns
 
 **Conclusion:** Bandit warnings are expected for system administration tools that call external binaries in a controlled manner. Each call has been manually verified as safe. The chmod issue is expected and appropriate for system command installation.
 
@@ -502,7 +503,7 @@ All 50 reported issues are either known Bandit false positives for safe patterns
 | File operations | Path analysis | ✅ PASS | Using pathlib (safe path handling) |
 | Error handling | Exception analysis | ✅ PASS | Comprehensive try/except blocks |
 | Credential management | Grep + review | ✅ PASS | No hardcoded secrets of any kind |
-| Bandit scanner | Automated tool | ✅ PASS | 0 real vulnerabilities, 46 false positives (explained) |
+| Bandit scanner | Automated tool | ✅ PASS | 0 real vulnerabilities, 55 low-risk findings + 1 expected medium finding |
 | Configuration safety | File analysis | ✅ PASS | Supports environment variables |
 | Output sanitization | Log analysis | ✅ PASS | No sensitive data in logs |
 
@@ -562,13 +563,13 @@ Please report security issues **privately** via:
 ## 📝 Scan Metadata
 
 - **Scanner Version:** Bandit 1.9.3
-- **Python Version Scanned:** 3.13.11
-- **Scan Date:** 2026-02-08 17:21:08
+- **Python Version Scanned:** 3.14.0
+- **Scan Date:** 2026-02-15 18:59:32
 - **Total Time:** ~52 seconds
-- **Files Scanned:** gentoo-updater.py + install.py
+- **Files Scanned:** gentoo-updater.py + install.py + scripts/create-release.py
 - **Repository:** Public (https://github.com/roimme65/gentoo-updater)
-- **Last Updated:** 2026-02-08
-- **Next Recommended Scan:** 2026-05-08 (quarterly)
+- **Last Updated:** 2026-02-15
+- **Next Recommended Scan:** 2026-05-15 (quarterly)
 
 ---
 
@@ -577,8 +578,8 @@ Please report security issues **privately** via:
 ### `install.py` Security Assessment
 
 **Status:** ✅ SECURE  
-**Scan Date:** 2026-02-08  
-**Lines Scanned:** 385
+**Scan Date:** 2026-02-15  
+**Lines Scanned:** 473
 
 #### Key Features Reviewed
 
