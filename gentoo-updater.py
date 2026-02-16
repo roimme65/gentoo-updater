@@ -4,7 +4,7 @@ Gentoo System Updater
 Automatisches Update-Skript für Gentoo Linux
 """
 
-__version__ = "1.4.38"
+__version__ = "1.4.39"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 
@@ -1418,8 +1418,8 @@ class GentooUpdater:
 
         # 2) Config-Merge durchführen (bevorzugt etc-update)
         if shutil.which("etc-update"):
-            merge_cmd = ["etc-update", "-a"]
-            merge_desc = "Übernehme Konfigurationsänderungen mit etc-update -a"
+            merge_cmd = ["etc-update", "--automode", "-3"]
+            merge_desc = "Übernehme Konfigurationsänderungen mit etc-update --automode -3"
         elif shutil.which("dispatch-conf"):
             merge_cmd = ["dispatch-conf", "--replace-unmodified"]
             merge_desc = "Übernehme Konfigurationsänderungen mit dispatch-conf"
@@ -1706,7 +1706,7 @@ class GentooUpdater:
         
         Modi:
         - interactive: Benutzer wird interaktiv gefragt (standard etc-update UI)
-        - auto: Alle Updates werden automatisch angewendet (etc-update -a)
+        - auto: Alle Updates werden automatisch angewendet (etc-update --automode -3)
         - skip: Keine Aktualisierung, nur Benachrichtigung
         """
         self.print_section("SCHRITT 9: Konfigurationsdateien aktualisieren")
@@ -1725,12 +1725,12 @@ class GentooUpdater:
         
         elif self.etc_update_mode == 'auto':
             if self.dry_run:
-                self.print_warning("DRY-RUN: Würde etc-update -a ausführen")
+                self.print_warning("DRY-RUN: Würde etc-update --automode -3 ausführen")
                 return True
             
             self.print_info("Modus: auto - Aktualisiere alle Konfigurationsdateien automatisch")
             success, output = self.run_command(
-                ["etc-update", "-a"],
+                ["etc-update", "--automode", "-3"],
                 "Aktualisiere Konfigurationsdateien automatisch",
                 allow_fail=True
             )
