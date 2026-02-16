@@ -1,3 +1,8 @@
+## Unreleased (2026-02-16)
+- Neu: CLI-Toggle `--auto-autounmask` / `--no-auto-autounmask` hinzugefügt
+- Neu: Automatische Recovery bei Portage-Autounmask-Fehlern (`--autounmask-write` + Config-Merge + emerge-Retry)
+- Doku: README und README.de um kurzen Hinweis zum neuen Toggle ergänzt
+
 ## v1.4.36 (2026-02-15)
 - Release
 

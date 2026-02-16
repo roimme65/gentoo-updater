@@ -4,7 +4,7 @@ Gentoo System Updater
 Automatisches Update-Skript für Gentoo Linux
 """
 
-__version__ = "1.4.36"
+__version__ = "1.4.37"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 
@@ -487,6 +487,10 @@ HELP_TEXTS = {
         'de': 'Modus für Konfigurationsdateien-Updates (Standard: interaktiv)',
         'en': 'Mode for configuration file updates (default: interactive)'
     },
+    'auto_autounmask': {
+        'de': 'Aktiviere automatische Portage-Autounmask-Recovery (--autounmask-write + Config-Merge + Retry)',
+        'en': 'Enable automatic Portage autounmask recovery (--autounmask-write + config merge + retry)'
+    },
     'repository': {
         'de': 'Zeige GitHub-Repository-Informationen',
         'en': 'Show GitHub repository information'
@@ -684,7 +688,7 @@ class GentooUpdater:
                  log_level: str = 'INFO', timeout: Optional[int] = None,
                  retry_count: int = 1, webhook_url: Optional[str] = None,
                  max_packages: Optional[int] = None, custom_mirrors: Optional[List[str]] = None,
-                 etc_update_mode: str = 'interactive'):
+                 etc_update_mode: str = 'interactive', auto_autounmask: bool = True):
         self.verbose = verbose
         self.dry_run = dry_run
         self.rebuild_modules = rebuild_modules
@@ -696,6 +700,7 @@ class GentooUpdater:
         self.max_packages = max_packages
         self.custom_mirrors = custom_mirrors
         self.etc_update_mode = etc_update_mode  # interactive, auto, oder skip
+        self.auto_autounmask = auto_autounmask
         
         # Skip-Flags (werden von main() gesetzt)
         self.skip_sync = False
@@ -1374,6 +1379,65 @@ class GentooUpdater:
             self.stats['packages_updated'].extend(packages)
         elif operation == 'remove':
             self.stats['packages_removed'].extend(packages)
+
+    def requires_autounmask_recovery(self, output: str) -> bool:
+        """Prüft, ob emerge wegen notwendiger autounmask-Änderungen abgebrochen ist"""
+        if not output:
+            return False
+
+        output_lower = output.lower()
+        indicators = [
+            "use --autounmask-write to write changes to config files",
+            "the following use changes are necessary to proceed",
+            "autounmask change(s)",
+            "no ebuilds built with use flags to satisfy"
+        ]
+        return any(indicator in output_lower for indicator in indicators)
+
+    def apply_autounmask_and_update_configs(self, base_emerge_cmd: List[str]) -> bool:
+        """Führt autounmask-write aus und merged Konfigurationsänderungen automatisch"""
+        self.print_warning("Portage verlangt Konfigurations-/USE-Änderungen. Starte automatische Autounmask-Recovery...")
+
+        # 1) Änderungen automatisch schreiben lassen
+        autounmask_flags = [
+            "--autounmask=y",
+            "--autounmask-write",
+            "--autounmask-continue",
+            "--ask=n"
+        ]
+        autounmask_cmd = [base_emerge_cmd[0], *autounmask_flags, *base_emerge_cmd[1:]]
+
+        success, _ = self.run_command(
+            autounmask_cmd,
+            "Wende autounmask-Änderungen automatisch an",
+            allow_fail=True
+        )
+        if not success:
+            self.print_warning("Autounmask-Änderungen konnten nicht automatisch geschrieben werden")
+            return False
+
+        # 2) Config-Merge durchführen (bevorzugt etc-update)
+        if shutil.which("etc-update"):
+            merge_cmd = ["etc-update", "-a"]
+            merge_desc = "Übernehme Konfigurationsänderungen mit etc-update -a"
+        elif shutil.which("dispatch-conf"):
+            merge_cmd = ["dispatch-conf", "--replace-unmodified"]
+            merge_desc = "Übernehme Konfigurationsänderungen mit dispatch-conf"
+        else:
+            self.print_warning("Weder etc-update noch dispatch-conf gefunden - automatische Recovery nicht möglich")
+            return False
+
+        success, _ = self.run_command(
+            merge_cmd,
+            merge_desc,
+            allow_fail=True
+        )
+        if not success:
+            self.print_warning("Konfigurations-Merge nach autounmask fehlgeschlagen")
+            return False
+
+        self.print_success("Autounmask-Recovery erfolgreich abgeschlossen")
+        return True
             
     def update_system(self) -> Tuple[bool, bool]:
         """Aktualisiert das gesamte System
@@ -1417,8 +1481,22 @@ class GentooUpdater:
         # Führe das eigentliche Update durch
         success, output = self.run_command(
             emerge_cmd,
-            "Aktualisiere System-Pakete"
+            "Aktualisiere System-Pakete",
+            allow_fail=True
         )
+
+        # Wenn notwendige USE/Config-Änderungen fehlen: automatisch anwenden und einmal neu versuchen
+        if not success and self.auto_autounmask and self.requires_autounmask_recovery(output):
+            recovered = self.apply_autounmask_and_update_configs(emerge_cmd)
+            if recovered:
+                self.print_info("Starte emerge nach automatischer autounmask-Recovery erneut...")
+                success, output = self.run_command(
+                    emerge_cmd,
+                    "Aktualisiere System-Pakete (Retry nach autounmask)",
+                    allow_fail=True
+                )
+        elif not success and self.requires_autounmask_recovery(output):
+            self.print_warning("Autounmask-Recovery erkannt, aber deaktiviert (--no-auto-autounmask)")
         
         return success, kernel_updated
         
@@ -1958,6 +2036,7 @@ def main():
     env_retry = os.getenv('GENTOO_UPDATER_RETRY_COUNT', '1')
     env_webhook = os.getenv('GENTOO_UPDATER_WEBHOOK')
     env_parallel = os.getenv('GENTOO_UPDATER_PARALLEL_JOBS')
+    env_auto_autounmask = os.getenv('GENTOO_UPDATER_AUTO_AUTOUNMASK')
     env_skip_internet_check = os.getenv('GENTOO_UPDATER_SKIP_INTERNET_CHECK', 'false').lower() == 'true'
     
     parser = argparse.ArgumentParser(
@@ -2002,6 +2081,7 @@ Umgebungsvariablen:
   GENTOO_UPDATER_SKIP_INTERNET_CHECK=true # Überspringe Internetverbindungs-Prüfung
   GENTOO_UPDATER_WEBHOOK=URL             # Webhook-URL
   GENTOO_UPDATER_PARALLEL_JOBS=4         # Parallele Jobs
+    GENTOO_UPDATER_AUTO_AUTOUNMASK=true    # Automatische autounmask-Recovery
   GENTOO_UPDATER_MIRRORS=URL1,URL2       # Custom Mirror (komma-getrennt)
         """
     )
@@ -2102,6 +2182,11 @@ Umgebungsvariablen:
                        choices=['interactive', 'auto', 'skip'],
                        default='interactive',
                        help=get_help_text('etc_update_mode'))
+
+    parser.add_argument('--auto-autounmask',
+                       action=argparse.BooleanOptionalAction,
+                       default=True,
+                       help=get_help_text('auto_autounmask'))
     
     parser.add_argument('--repository',
                        action='store_true',
@@ -2191,6 +2276,8 @@ Umgebungsvariablen:
         args.notification_webhook = env_webhook
     if env_parallel:
         args.parallel_jobs = int(env_parallel) if env_parallel else None
+    if env_auto_autounmask is not None:
+        args.auto_autounmask = env_auto_autounmask.lower() in ['1', 'true', 'yes', 'on']
     if env_skip_internet_check:
         args.skip_internet_check = True
     
@@ -2243,7 +2330,8 @@ Umgebungsvariablen:
             webhook_url=args.notification_webhook,
             max_packages=args.max_packages,
             custom_mirrors=custom_mirrors,
-            etc_update_mode=args.etc_update_mode
+            etc_update_mode=args.etc_update_mode,
+            auto_autounmask=args.auto_autounmask
         )
         
         # Nur Module neu gebaut werden sollen

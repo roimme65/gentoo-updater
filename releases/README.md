@@ -4,10 +4,12 @@ Dieses Verzeichnis enthält detaillierte Release Notes für jede Version des Gen
 
 ## Verfügbare Releases
 
-- [v1.1.2](v1.1.2.md) - String-Parsing Bug Fix (2025-01-10) ⭐ **NEUESTE**
-- [v1.1.1](v1.1.1.md) - Kernel-Module Bug Fix (2025-01-10)
-- [v1.1.0](v1.1.0.md) - Automatische Kernel-Modul-Neucompilierung (2025-01-10)
-- [v1.0.0](v1.0.0.md) - Initiales Release (2025-01-01)
+- [v1.4.37](v1.4.37.md) - Auto-Autounmask-Recovery (2026-02-16) ⭐ **NEUESTE**
+- [v1.4.36](v1.4.36.md) - Security-Scan-Dokumentation aktualisiert (2026-02-15)
+- [v1.4.35](v1.4.35.md) - Sichtbare Internetverbindungs-Prüfung beim Start (2026-02-15)
+- [v1.4.24](v1.4.24.md) - Deutsche Mirrors und verify-sig Integration (2026-02-07)
+- [v1.4.0](v1.4.0.md) - Erweiterte CLI-Parameter (2026-02-06)
+- [v1.3.3](v1.3.3.md) - Mirror-Logging (2026-02-06)
 
 ## Format
 

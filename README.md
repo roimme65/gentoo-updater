@@ -47,6 +47,7 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 - 📦 **--max-packages N** (limit updates)
 - ⏱️ **--timeout SECONDS** (set emerge timeout)
 - 🔄 **--retry-count N** (automatic retries on failure)
+- 🛠️ **--auto-autounmask / --no-auto-autounmask** (toggle automatic autounmask recovery + retry)
 - 🔔 **--notification-webhook URL** (send notifications)
 - ⚙️ **--parallel-jobs N** (override job count)
 - 🌍 **Environment Variables** (GENTOO_UPDATER_*)
@@ -477,27 +478,16 @@ Contributions are welcome! Please create a pull request or open an issue.
 
 ## Changelog
 
-### v1.4.0 (2026-02-06) - 🆕 Advanced Parameters
-- 🎛️ **New Parameters:** --log-level, --skip-*, --only-*, --max-packages, --timeout, --retry-count, --notification-webhook, --parallel-jobs
-- 🌍 **Environment Variables:** Full environment variable support (GENTOO_UPDATER_*)
-- 📝 **Documentation:** Updated help with examples and environment variable docs
-- ✨ **v1.4.0 Ready for PyPI:** All parameters fully implemented
+### Latest Releases
 
-### v1.4.24 (2026-02-07) - 🇩🇪 German Mirrors & verify-sig
-- 🇩🇪 **German Mirrors:** RWTH Aachen (Distfiles), NetCologne (Rsync)
-- 🔐 **Security:** verify-sig USE flag for GPG signature verification
-- 🎯 **mirrorselect Integration:** Automatic & interactive mirror selection
-- ✨ **Tier-1 Mirrors:** RWTH Aachen, Init7, NetCologne, Ruhr University Bochum
-- 📝 **Configuration:** Separate Distfiles and Rsync mirror handling
-- 🛡️ **Enhanced Security:** All packages compiled with GPG verification
+- [v1.4.37](releases/v1.4.37.md) - Auto Autounmask Recovery (2026-02-16) ⭐ **LATEST**
+- [v1.4.36](releases/v1.4.36.md) - Security scan documentation update (2026-02-15)
+- [v1.4.35](releases/v1.4.35.md) - Startup internet connection check message (2026-02-15)
+- [v1.4.24](releases/v1.4.24.md) - German mirrors and verify-sig integration (2026-02-07)
+- [v1.4.0](releases/v1.4.0.md) - Advanced CLI parameters (2026-02-06)
+- [v1.3.3](releases/v1.3.3.md) - Mirror logging (2026-02-06)
 
-### v1.3.3 (2026-02-06) - 🌍 Mirror Logging
-- 🌍 **New Feature:** Mirror Logging
-  - Reads GENTOO_MIRRORS from `/etc/portage/make.conf`
-  - Displays all configured mirrors during repository sync
-  - Logs primary mirror to log file and JSON summary
-- 📊 Enhanced statistics with mirror information
-- 📝 Improved logging during repository sync
+For complete history, see [CHANGELOG.md](CHANGELOG.md) and the [releases folder](releases/README.md).
 
 ## Author
 
