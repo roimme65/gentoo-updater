@@ -1,3 +1,6 @@
+## v1.4.41 (2026-02-21)
+- Release
+
 ## v1.4.40 (2026-02-21)
 
 - Neu: **--resolve-blocks** Parameter f\u00fcr automatische Aufl\u00f6sung blockierter Pakete
