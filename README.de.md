@@ -160,6 +160,9 @@ sudo gentoo-updater --parallel-jobs 8
 
 # Webhook-Benachrichtigung
 sudo gentoo-updater --notification-webhook "https://example.com/webhook"
+
+# Blockierte Pakete automatisch mit Backtracking auflösen
+sudo gentoo-updater --resolve-blocks --backtrack 20
 ```
 
 ### Umgebungsvariablen (v1.4.0+)
@@ -179,7 +182,14 @@ GENTOO_UPDATER_RETRY_COUNT=3 sudo gentoo-updater
 
 # Job-Anzahl überschreiben
 GENTOO_UPDATER_PARALLEL_JOBS=4 sudo gentoo-updater
-```
+# Internetverbindungs-Pr\u00fcfung \u00fcberspringen
+GENTOO_UPDATER_SKIP_INTERNET_CHECK=true sudo gentoo-updater
+
+# Blockierte Pakete automatisch aufl\u00f6sen
+GENTOO_UPDATER_RESOLVE_BLOCKS=true sudo gentoo-updater
+
+# Backtrack-Stufe setzen
+GENTOO_UPDATER_BACKTRACK=25 sudo gentoo-updater```
 
 ### Kernel-Module neu kompilieren
 

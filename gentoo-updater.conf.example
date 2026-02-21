@@ -13,5 +13,7 @@
     "sys-libs/glibc",
     "dev-lang/python"
   ],
-  "log_retention_days": 30
+  "log_retention_days": 30,
+  "resolve_blocks": false,
+  "backtrack_level": 20
 }

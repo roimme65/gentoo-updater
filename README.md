@@ -50,6 +50,8 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 - 🛠️ **--auto-autounmask / --no-auto-autounmask** (toggle automatic autounmask recovery + retry)
 - 🔔 **--notification-webhook URL** (send notifications)
 - ⚙️ **--parallel-jobs N** (override job count)
+- 🚫 **--resolve-blocks** (automatically resolve blocked packages with backtracking)
+- 📊 **--backtrack N** (set backtrack level, default: 20)
 - 🌍 **Environment Variables** (GENTOO_UPDATER_*)
 
 ## Requirements
@@ -163,6 +165,9 @@ sudo gentoo-updater --parallel-jobs 8
 
 # Send webhook notification
 sudo gentoo-updater --notification-webhook "https://example.com/webhook"
+
+# Automatically resolve blocked packages with backtracking
+sudo gentoo-updater --resolve-blocks --backtrack 20
 ```
 
 ### Environment Variables (v1.4.0+)
@@ -185,6 +190,12 @@ GENTOO_UPDATER_PARALLEL_JOBS=4 sudo gentoo-updater
 
 # Skip internet connection check
 GENTOO_UPDATER_SKIP_INTERNET_CHECK=true sudo gentoo-updater
+
+# Automatically resolve blocked packages
+GENTOO_UPDATER_RESOLVE_BLOCKS=true sudo gentoo-updater
+
+# Set backtrack level
+GENTOO_UPDATER_BACKTRACK=25 sudo gentoo-updater
 ```
 
 ### Kernel Module Recompilation

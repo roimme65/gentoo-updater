@@ -1,3 +1,10 @@
+## v1.4.40 (2026-02-21)
+- Neu: **--resolve-blocks** Parameter f\u00fcr automatische Aufl\u00f6sung blockierter Pakete
+- Neu: **--backtrack N** Parameter zur Kontrolle der Backtrack-Stufe (Standard: 20)
+- Neu: Umgebungsvariablen `GENTOO_UPDATER_RESOLVE_BLOCKS` und `GENTOO_UPDATER_BACKTRACK`
+- Verbesserung: Verbesserte `check_blocked_packages()` Funktion mit auto-resolve Logik
+- Verbesserung: emerge-Befehl nutzt --backtrack bei blockierten Paketen automatisch
+- Doku: README und README.de aktualisiert mit neuen Parametern
 ## v1.4.39 (2026-02-16)
 - Release
 

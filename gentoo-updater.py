@@ -506,6 +506,14 @@ HELP_TEXTS = {
     'license': {
         'de': 'Zeige Lizenz-Informationen',
         'en': 'Show license information'
+    },
+    'resolve_blocks': {
+        'de': 'Versuche blockierte Pakete automatisch zu handhaben (mit --backtrack)',
+        'en': 'Try to automatically handle blocked packages (uses --backtrack)'
+    },
+    'backtrack': {
+        'de': 'Backtrack-Stufe für Abhängigkeitslöser (Standard: 20)',
+        'en': 'Backtrack level for dependency resolver (default: 20)'
     }
 }
 
@@ -861,8 +869,15 @@ class GentooUpdater:
         except Exception as e:
             self.print_warning(f"Konnte alte Backups nicht löschen: {e}")
     
-    def check_blocked_packages(self) -> bool:
-        """Prüft auf blockierte Pakete"""
+    def check_blocked_packages(self, auto_resolve: bool = False) -> bool:
+        """Prüft auf blockierte Pakete
+        
+        Args:
+            auto_resolve: Wenn True, wird nur gewarnt statt zu stoppen
+        
+        Returns:
+            True wenn keine Blockierungen oder auto_resolve=True, sonst False
+        """
         self.print_info("Prüfe auf blockierte Pakete...")
         
         try:
@@ -875,8 +890,13 @@ class GentooUpdater:
             if "blocked by" in result.stdout.lower() or "blocking" in result.stdout.lower():
                 self.print_error(_('BLOCKED_PACKAGES_FOUND'))
                 print(result.stdout)
-                self.print_info(_('BLOCKED_INFO'))
-                return False
+                
+                if auto_resolve:
+                    self.print_warning("Blockierte Pakete gefunden. Versuche mit --backtrack zu beheben...")
+                    return True  # Fortfahren und --backtrack in emerge verwenden
+                else:
+                    self.print_info(_('BLOCKED_INFO'))
+                    return False
             return True
         except Exception as e:
             self.print_warning(f"Konnte Blockierungen nicht prüfen: {e}")
@@ -1340,7 +1360,8 @@ class GentooUpdater:
         self.print_section("SCHRITT 3: Prüfe verfügbare Updates")
         
         # Prüfe blockierte Pakete
-        if not self.check_blocked_packages():
+        auto_resolve = self.config.get('resolve_blocks', False)
+        if not self.check_blocked_packages(auto_resolve=auto_resolve):
             sys.exit(1)
         
         try:
@@ -1466,6 +1487,8 @@ class GentooUpdater:
         # Baue emerge-Befehl mit Performance-Optimierungen
         jobs = self.config.get_emerge_jobs()
         load_avg = self.config.get_load_average()
+        resolve_blocks = self.config.get('resolve_blocks', False)
+        backtrack_level = self.config.get('backtrack_level', 20)
         
         emerge_cmd = [
             "emerge", 
@@ -1473,8 +1496,14 @@ class GentooUpdater:
             "--with-bdeps=y",
             f"--jobs={jobs}",
             f"--load-average={load_avg}",
-            "@world"
         ]
+        
+        # Füge --backtrack hinzu, wenn blockierte Pakete automatisch gelöst werden sollen
+        if resolve_blocks:
+            emerge_cmd.append(f"--backtrack={backtrack_level}")
+            self.print_info(f"Backtracking aktiviert mit Level {backtrack_level} wegen blockierter Pakete")
+        
+        emerge_cmd.append("@world")
         
         self.print_info(_('PERFORMANCE_INFO', jobs=jobs, load=load_avg))
         
@@ -2038,6 +2067,8 @@ def main():
     env_parallel = os.getenv('GENTOO_UPDATER_PARALLEL_JOBS')
     env_auto_autounmask = os.getenv('GENTOO_UPDATER_AUTO_AUTOUNMASK')
     env_skip_internet_check = os.getenv('GENTOO_UPDATER_SKIP_INTERNET_CHECK', 'false').lower() == 'true'
+    env_resolve_blocks = os.getenv('GENTOO_UPDATER_RESOLVE_BLOCKS', 'false').lower() == 'true'
+    env_backtrack = os.getenv('GENTOO_UPDATER_BACKTRACK', '20')
     
     parser = argparse.ArgumentParser(
         description='Gentoo System Updater - Automatisiert System-Updates',
@@ -2204,6 +2235,15 @@ Umgebungsvariablen:
                        action='store_true',
                        help=get_help_text('license'))
     
+    parser.add_argument('--resolve-blocks',
+                       action='store_true',
+                       help=get_help_text('resolve_blocks'))
+    
+    parser.add_argument('--backtrack',
+                       type=int,
+                       default=20,
+                       help=get_help_text('backtrack'))
+    
     parser.add_argument('--version',
                        action='version',
                        version=f'Gentoo Updater v{__version__}')
@@ -2280,6 +2320,10 @@ Umgebungsvariablen:
         args.auto_autounmask = env_auto_autounmask.lower() in ['1', 'true', 'yes', 'on']
     if env_skip_internet_check:
         args.skip_internet_check = True
+    if env_resolve_blocks:
+        args.resolve_blocks = True
+    if env_backtrack:
+        args.backtrack = int(env_backtrack) if env_backtrack else 20
     
     # ===== KRITISCHE CHECKS: INTERNET-VERBINDUNG =====
     # Prüfe Internet-Verbindung, sofern nicht übersprungen
@@ -2318,6 +2362,13 @@ Umgebungsvariablen:
         # Parallel-Jobs from parameter override config
         if args.parallel_jobs:
             config.config['emerge_jobs'] = args.parallel_jobs
+        
+        # Resolve-Blocks from parameter override config
+        if args.resolve_blocks:
+            config.config['resolve_blocks'] = True
+        
+        # Backtrack level from parameter override config
+        config.config['backtrack_level'] = args.backtrack
         
         updater = GentooUpdater(
             verbose=args.verbose, 
