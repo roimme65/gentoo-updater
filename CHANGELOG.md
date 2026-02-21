@@ -1,7 +1,5 @@
 ## v1.4.40 (2026-02-21)
-- Release
 
-## v1.4.40 (2026-02-21)
 - Neu: **--resolve-blocks** Parameter f\u00fcr automatische Aufl\u00f6sung blockierter Pakete
 - Neu: **--backtrack N** Parameter zur Kontrolle der Backtrack-Stufe (Standard: 20)
 - Neu: Umgebungsvariablen `GENTOO_UPDATER_RESOLVE_BLOCKS` und `GENTOO_UPDATER_BACKTRACK`
