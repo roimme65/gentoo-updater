@@ -728,6 +728,7 @@ class GentooUpdater:
         self.stats = {
             'packages_updated': [],
             'packages_removed': [],
+            'critical_packages': [],
             'kernel_updated': False,
             'modules_rebuilt': False,
             'errors': [],
@@ -888,13 +889,14 @@ class GentooUpdater:
             )
             
             if "blocked by" in result.stdout.lower() or "blocking" in result.stdout.lower():
-                self.print_error(_('BLOCKED_PACKAGES_FOUND'))
                 print(result.stdout)
                 
                 if auto_resolve:
+                    # Nur als Warnung, nicht als permanenter Fehler - wird mit --backtrack versucht zu beheben
                     self.print_warning("Blockierte Pakete gefunden. Versuche mit --backtrack zu beheben...")
                     return True  # Fortfahren und --backtrack in emerge verwenden
                 else:
+                    self.print_error(_('BLOCKED_PACKAGES_FOUND'))
                     self.print_info(_('BLOCKED_INFO'))
                     return False
             return True
@@ -903,7 +905,7 @@ class GentooUpdater:
             return True
     
     def detect_critical_updates(self, pretend_output: str) -> List[str]:
-        """Erkennt kritische Paket-Updates"""
+        """Erkennt kritische Paket-Updates und speichert sie in stats"""
         critical_packages = self.config.get('critical_packages', [])
         found_critical = []
         
@@ -916,6 +918,8 @@ class GentooUpdater:
             for pkg in found_critical:
                 self.print_warning(f"  - {pkg}")
             self.print_info(_('CRITICAL_UPDATES_REQUIRED'))
+            # Speichere kritische Pakete in stats für die Summary
+            self.stats['critical_packages'] = found_critical
         
         return found_critical
     
@@ -1392,12 +1396,21 @@ class GentooUpdater:
             return False, ""
     
     def extract_package_list(self, output: str, operation: str):
-        """Extrahiert Paket-Namen aus emerge-Output"""
+        """Extrahiert Paket-Namen aus emerge-Output und markiert kritische Pakete"""
         pattern = r'\[ebuild.*?\]\s+([^\s]+)'
         packages = re.findall(pattern, output)
+        critical_packages = self.config.get('critical_packages', [])
         
         if operation == 'update':
             self.stats['packages_updated'].extend(packages)
+            # Markiere kritische Pakete die aktualisiert werden
+            for pkg in packages:
+                for crit_pkg in critical_packages:
+                    if crit_pkg in pkg:
+                        if not hasattr(self.stats, 'critical_packages_in_update'):
+                            self.stats['critical_packages_in_update'] = []
+                        self.stats['critical_packages_in_update'].append(pkg)
+                        break
         elif operation == 'remove':
             self.stats['packages_removed'].extend(packages)
 
@@ -1824,11 +1837,18 @@ class GentooUpdater:
             print()
         
         if self.stats['kernel_updated']:
-            print(f"{Colors.WARNING}{symbol('warning')} Kernel wurde aktualisiert{Colors.ENDC}")
+            print(f"{Colors.WARNING}{symbol('warning')} Kernel wurde aktualisiert - prüfe nach Boot auf exotische Hardware{Colors.ENDC}")
             print()
         
         if self.stats['modules_rebuilt']:
             print(f"{Colors.OKGREEN}{symbol('checkmark')} Kernel-Module neu gebaut{Colors.ENDC}")
+            print()
+        
+        # Zeige kritische Pakete speziell an wenn vorhanden
+        if self.stats.get('critical_packages'):
+            print(f"{Colors.WARNING}{symbol('warning')} KRITISCHE PAKETE wurden aktualisiert:{Colors.ENDC}")
+            for pkg in self.stats.get('critical_packages', []):
+                print(f"  {symbol('warning')} {pkg}")
             print()
         
         if self.stats['warnings']:
