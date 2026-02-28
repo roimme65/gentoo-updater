@@ -1414,6 +1414,81 @@ class GentooUpdater:
         elif operation == 'remove':
             self.stats['packages_removed'].extend(packages)
 
+    def detect_dependency_conflicts(self, output: str) -> List[Dict[str, str]]:
+        """Erkennt Dependency-Konflikte aus emerge-Ausgabe
+        
+        Returns:
+            Liste von Konflikten mit 'package' und 'conflict' Keys
+        """
+        conflicts = []
+        
+        if not output or "conflicts with" not in output.lower():
+            return conflicts
+        
+        # Parses Konflikte wie: "X conflicts with Y"
+        lines = output.split('\n')
+        for line in lines:
+            if 'conflicts with' in line.lower():
+                conflicts.append({
+                    'package': line.strip(),
+                    'conflict': 'dependency_conflict'
+                })
+        
+        return conflicts
+    
+    def detect_ignored_binary_packages(self, output: str) -> List[Dict[str, str]]:
+        """Erkennt ignorierte Binary-Packages aufgrund von USE-Flag Mismatches
+        
+        Returns:
+            Liste von ignorierte Paketen
+        """
+        ignored = []
+        
+        if not output or "following binary packages have been ignored" not in output.lower():
+            return ignored
+        
+        in_ignored_section = False
+        for line in output.split('\n'):
+            if 'following binary packages have been ignored' in line.lower():
+                in_ignored_section = True
+                continue
+            elif in_ignored_section:
+                if line.strip().startswith('=') or line.strip() == '':
+                    continue
+                elif any(x in line for x in ['WARNING:', 'NOTE:', '!!! ', '>>>']):
+                    break
+                elif line.strip():
+                    ignored.append({
+                        'package': line.strip(),
+                        'reason': 'use_mismatch'
+                    })
+        
+        return ignored
+    
+    def detect_skipped_updates(self, output: str) -> List[str]:
+        """Erkennt übersprungene Updates aufgrund von Konflikten
+        
+        Returns:
+            Liste von übersprungenen Paketen
+        """
+        skipped = []
+        
+        if "updates/rebuilds have been skipped" not in output.lower():
+            return skipped
+        
+        lines = output.split('\n')
+        for i, line in enumerate(lines):
+            if "updates/rebuilds have been skipped" in line.lower():
+                # Nächste Zeilen analysieren bis eine neue Sektion kommt
+                for j in range(i + 1, min(i + 20, len(lines))):
+                    if lines[j].strip().startswith('(') and '::' in lines[j]:
+                        # Paket-Zeile gefunden
+                        pkg_match = re.search(r'\(([^,]+),', lines[j])
+                        if pkg_match:
+                            skipped.append(pkg_match.group(1).strip())
+        
+        return skipped
+
     def requires_autounmask_recovery(self, output: str) -> bool:
         """Prüft, ob emerge wegen notwendiger autounmask-Änderungen abgebrochen ist"""
         if not output:
@@ -1539,6 +1614,70 @@ class GentooUpdater:
                 )
         elif not success and self.requires_autounmask_recovery(output):
             self.print_warning("Autounmask-Recovery erkannt, aber deaktiviert (--no-auto-autounmask)")
+        
+        # Handhabe Dependency-Konflikte und ignorierte Binary-Packages
+        if not success:
+            conflicts = self.detect_dependency_conflicts(output)
+            ignored_binpkgs = self.detect_ignored_binary_packages(output)
+            skipped_updates = self.detect_skipped_updates(output)
+            
+            if conflicts:
+                self.print_warning(f"Dependency-Konflikte erkannt ({len(conflicts)})")
+                for conflict_info in conflicts:
+                    self.print_warning(f"  {conflict_info['package']}")
+                
+                # Versuche mit erhöhtem Backtrack-Level erneut
+                if conflicts and '--backtrack' not in ' '.join(emerge_cmd):
+                    self.print_info("Versuche mit --backtrack=30 erneut...")
+                    retry_cmd = emerge_cmd.copy()
+                    retry_cmd.insert(len(retry_cmd) - 1, "--backtrack=30")
+                    success, output = self.run_command(
+                        retry_cmd,
+                        "Aktualisiere System-Pakete (Retry mit erhöhtem Backtrack)",
+                        allow_fail=True
+                    )
+            
+            if not success and ignored_binpkgs:
+                self.print_warning(f"Binary-Packages mit USE-Mismatch ignoriert ({len(ignored_binpkgs)})")
+                for ignored_info in ignored_binpkgs[:5]:  # Nur erste 5 ausgeben
+                    self.print_warning(f"  {ignored_info['package']}")
+                
+                # Versuche mit --binpkg-respect-use=n um Binary-Packages trotz USE-Mismatch zu akzeptieren
+                self.print_info("Versuche mit --binpkg-respect-use=n um Binary-Package-Konflikte zu umgehen...")
+                retry_cmd = emerge_cmd.copy()
+                # Entferne @world am Ende und füge es mit binpkg-Option wieder hinzu
+                if retry_cmd[-1] == '@world':
+                    retry_cmd = retry_cmd[:-1]
+                retry_cmd.append("--binpkg-respect-use=n")
+                retry_cmd.append("@world")
+                success, output = self.run_command(
+                    retry_cmd,
+                    "Aktualisiere System-Pakete (Retry mit --binpkg-respect-use=n)",
+                    allow_fail=True
+                )
+            
+            if not success and skipped_updates:
+                self.print_warning(f"Updates übersprungen aufgrund von Konflikten ({len(skipped_updates)})")
+                for pkg in skipped_updates[:5]:  # Nur erste 5 ausgeben
+                    self.print_warning(f"  {pkg}")
+                self.print_info("Versuche mit höherem Backtrack-Level und zusätzlichen Flags...")
+                
+                retry_cmd = [
+                    "emerge",
+                    "--update", "--deep", "--newuse",
+                    "--with-bdeps=y",
+                    f"--jobs={jobs}",
+                    f"--load-average={load_avg}",
+                    "--backtrack=50",
+                    "--binpkg-respect-use=n",
+                    "--ask=n",
+                    "@world"
+                ]
+                success, output = self.run_command(
+                    retry_cmd,
+                    "Aktualisiere System-Pakete (Finale Retry mit Maximum-Optionen)",
+                    allow_fail=True
+                )
         
         return success, kernel_updated
         
