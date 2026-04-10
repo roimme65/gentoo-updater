@@ -1830,6 +1830,68 @@ class GentooUpdater:
             allow_fail=True
         )
         return success
+
+    def handle_python_updates(self) -> bool:
+        """Bearbeitet spezifische Maßnahmen nach Python-Updates
+        
+        Nach einem Python-Update müssen möglicherweise Pakete neu gebaut werden.
+        Laut Gentoo-Wiki wurde python-updater aus dem Repository entfernt.
+        Der korrekte moderne Weg ist 'emerge @preserved-rebuild'.
+        """
+        # Prüfe ob Python in den kritischen Updates war
+        if 'dev-lang/python' not in self.stats.get('critical_packages', []):
+            return True  # Kein Python-Update
+        
+        self.print_section("SCHRITT 7b: Python-Update Nachbehandlung")
+        self.print_warning("Python wurde aktualisiert - führe preserved-rebuild durch...")
+        
+        if self.dry_run:
+            self.print_warning("DRY-RUN: Würde 'emerge @preserved-rebuild' ausführen")
+            return True
+        
+        # Schritt 1: preserved-rebuild - das ist der korrekte moderne Weg in Gentoo
+        # (python-updater wurde aus dem Gentoo-Repository entfernt)
+        self.print_info("Baue Pakete neu, die gegen alte Python-Bibliotheken gelinkt sind...")
+        success, output = self.run_command(
+            ["emerge", "--ask=n", "@preserved-rebuild"],
+            "Rebuild von Paketen gegen neue Python-Version (preserved-rebuild)",
+            allow_fail=True
+        )
+        
+        if success:
+            self.print_success("preserved-rebuild erfolgreich abgeschlossen!")
+        else:
+            self.print_warning("preserved-rebuild hatte Probleme - prüfe manuell")
+        
+        # Schritt 2: eselect python cleanup
+        try:
+            result = subprocess.run(
+                ["eselect", "python", "list"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                self.print_info("Verfügbare Python-Versionen:")
+                print(result.stdout)
+                self.print_info("Tipp: 'eselect python cleanup' entfernt veraltete Einträge")
+        except Exception:
+            pass
+        
+        # Hinweis auf manuelle Schritte bei Major-Version-Upgrade
+        print()
+        print(f"{Colors.OKBLUE}{Colors.BOLD}Bei Python Major-Version-Upgrade (z.B. 3.11 → 3.12):{Colors.ENDC}")
+        print()
+        print("  PYTHON_TARGETS in /etc/portage/package.use anpassen, z.B.:")
+        print("    */* PYTHON_TARGETS: python3_11 python3_12")
+        print("    */* PYTHON_SINGLE_TARGET: -* python3_12")
+        print()
+        print("  Dann erneut updaten:")
+        print("    $ sudo emerge --ask --changed-use --deep @world")
+        print("    $ sudo emerge --ask --depclean dev-lang/python")
+        print("    $ sudo eselect python cleanup")
+        print()
+        
+        self.stats['warnings'].append("Python-Update: preserved-rebuild wurde ausgeführt")
+        return True
         
     def check_kernel_updates(self):
         """Prüft ob Kernel-Updates verfügbar sind"""
@@ -2173,6 +2235,9 @@ Details siehe: {self.log_file}
             
             # Schritt 7: revdep-rebuild
             self.revdep_rebuild()
+
+            # Schritt 7b: Python-Update Nachbehandlung
+            self.handle_python_updates()
             
             # Schritt 8: Kernel-Check
             self.check_kernel_updates()
