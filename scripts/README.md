@@ -2,23 +2,9 @@
 
 ## create-release.py
 
-Automatisiert den kompletten Release-Prozess für den Gentoo Updater.
-
-### Features
-
-✨ **Vollautomatisch:**
-- Version-Bumping (major, minor, patch)
-- **Automatische Release-Notes aus Git-Commits** (mit `--auto`)
-- **Intelligente Commit-Kategorisierung** (Features, Bugfixes, Security, Docs, Improvements)
-- CHANGELOG-Update
-- Git-Commit und Tag
-- Push zu GitHub
-- **Direktes GitHub Release erstellen** (via `gh` CLI)
-- **GitHub Discussion** wird automatisch via GitHub Action erstellt
+Automatisiert den Release-Prozess für den Gentoo Updater. Das Skript erhöht die Version, erstellt Release-Notes, committet, taggt und pusht. GitHub Release und Discussion erstellen danach die GitHub Actions.
 
 ### Verwendung
-
-#### 🚀 Vollautomatischer Modus (empfohlen)
 
 ```bash
 # Patch Release (1.2.3 → 1.2.4) - Bugfixes
@@ -29,31 +15,50 @@ python scripts/create-release.py minor --auto
 
 # Major Release (1.2.3 → 2.0.0) - Breaking Changes
 python scripts/create-release.py major --auto
-```
 
-**Das war's!** Ein Befehl macht alles:
-- ✅ Analysiert Commits seit letztem Release
-- ✅ Generiert Release-Notes automatisch
-- ✅ Updated Version + CHANGELOG
-- ✅ Erstellt Commit, Tag & Release
-- ✅ Alles auf GitHub
-
-#### 📝 Interaktiver Modus (mit Bestätigung)
-
-```bash
-# Ohne --auto wird vor dem Fortfahren eine Bestätigung abgefragt
+# Interaktiv (Bestätigung vor dem Fortfahren)
 python scripts/create-release.py patch
+
+# Nur lokal committen und taggen, später selbst pushen
+python scripts/create-release.py patch --no-push
 ```
 
-#### ⏭ GitHub-Integration überspringen
+### Workflow
 
 ```bash
-python scripts/create-release.py patch --auto --skip-github
+# 1. Änderungen committen, CHANGELOG unter "## Unreleased" pflegen
+git commit -am "feat: Add Python update handling"
+git push
+
+# 2. Release erstellen
+python scripts/create-release.py patch --auto
 ```
+
+### Was passiert?
+
+1. **Prüfungen** – bevor irgendetwas geändert wird:
+   - Arbeitsverzeichnis ist sauber (sonst würden fremde Änderungen im Release-Commit landen)
+   - aktueller Branch ist `main`
+   - Tag `vX.Y.Z` existiert weder lokal noch auf GitHub
+   - lokaler Branch ist nicht hinter `origin/main`
+2. Versionsnummer in `gentoo-updater.py` und `install.py` erhöhen
+3. `releases/vX.Y.Z.md` schreiben: Einträge aus `## Unreleased` im CHANGELOG plus kategorisierte Commits seit dem letzten Tag
+4. `## Unreleased` im `CHANGELOG.md` in `## vX.Y.Z (Datum)` umbenennen (gibt es keinen Abschnitt, wird ein Eintrag ohne Details angelegt)
+5. Commit `vX.Y.Z - Release` mit genau diesen Dateien, danach Tag `vX.Y.Z`
+6. Commit und Tag zu GitHub pushen
+
+Schlägt ein Schritt fehl, bricht das Skript ab. Ohne erfolgreichen Commit wird kein Tag erstellt.
+
+### GitHub Actions (durch den Tag-Push ausgelöst)
+
+| Workflow | Aufgabe |
+|----------|---------|
+| `release.yml` | prüft die Version in `gentoo-updater.py`/`install.py` gegen den Tag, erstellt das GitHub Release mit `releases/vX.Y.Z.md` und hängt die Dateien an |
+| `create-discussion.yml` | erstellt die Discussion „Release vX.Y.Z“ in der Kategorie *Announcements* (übersprungen, falls bereits vorhanden) |
 
 ### 🏷️ Commit-Message Kategorisierung
 
-Das Skript kategorisiert Commits automatisch für die Release-Notes:
+Präfixe nach Conventional Commits, optional mit Scope (`feat(sync):`) und `!` für Breaking Changes:
 
 | Kategorie | Prefixes |
 |-----------|----------|
@@ -62,78 +67,30 @@ Das Skript kategorisiert Commits automatisch für die Release-Notes:
 | ⚡ Verbesserungen | `improve:`, `perf:`, `refactor:`, `⚡` |
 | 🔐 Security | `sec:`, `security:`, `🔐` |
 | 📝 Dokumentation | `docs:`, `doc:`, `readme:`, `📝` |
-| 📋 Andere | alles Weitere (außer Release-Commits) |
-
-### Workflow
-
-**Ein-Befehl-Release:**
-```bash
-# 1. Normale Änderungen committen
-git add -A
-git commit -m "feat: Add Python update handling"
-git push
-
-# 2. Release erstellen
-python scripts/create-release.py patch --auto
-
-# ✅ Fertig! Release ist live auf GitHub
-```
-
-### Was passiert automatisch?
-
-1. ✓ Aktuelle Version aus `gentoo-updater.py` auslesen
-2. ✓ Versionsnummer in `gentoo-updater.py` und `install.py` erhöhen
-3. ✓ Git-Commits seit letztem Tag analysieren und kategorisieren
-4. ✓ Release-Notes in `releases/vX.Y.Z.md` schreiben
-5. ✓ `CHANGELOG.md` aktualisieren
-6. ✓ Git-Commit (`vX.Y.Z - Release`) erstellen
-7. ✓ Git-Tag `vX.Y.Z` erstellen
-8. ✓ Commits und Tag zu GitHub pushen
-9. ✓ **GitHub Release** direkt via `gh` CLI erstellen
-10. ✓ **GitHub Discussion** via GitHub Action (`.github/workflows/create-discussion.yml`) erstellen
+| 🔀 Andere Commits | alles Weitere (außer `vX.Y.Z - Release`) |
 
 ### Voraussetzungen
 
-✅ **Python 3** installiert  
-✅ **Git muss sauber sein** (keine uncommitted changes)  
-✅ **Auf main Branch**  
-✅ **SSH-Key für GitHub** konfiguriert  
-✅ **gh CLI installiert und authentifiziert** (für direktes GitHub Release)
-
-### Sicherheit
-
-- Im interaktiven Modus: Bestätigung vor dem Release
-- Zeigt aktuelle und neue Version vor Ausführung an
+- Python 3.9+
+- Git mit SSH-Zugriff auf GitHub (`ssh -T git@github.com`)
+- Die `gh` CLI wird **nicht** mehr benötigt
 
 ### Troubleshooting
 
-**"Konnte aktuelle Version nicht ermitteln"**
+**„Arbeitsverzeichnis enthält nicht committete Änderungen“**
 ```bash
-# Stelle sicher dass __version__ in gentoo-updater.py vorhanden ist
-grep '__version__' gentoo-updater.py
+git status            # Änderungen committen oder
+git stash             # vorübergehend beiseitelegen
 ```
 
-**"Tag-Erstellung fehlgeschlagen"**
+**„Tag vX.Y.Z existiert bereits“**
 ```bash
-# Tag existiert möglicherweise bereits
-git tag -l | grep vX.Y.Z
-git tag -d vX.Y.Z  # Tag lokal löschen falls nötig
+git tag -l 'vX.Y.Z'
+git tag -d vX.Y.Z     # nur lokal löschen, wenn er nie gepusht wurde
 ```
 
-**"Push zu GitHub fehlgeschlagen"**
+**„Push zu GitHub fehlgeschlagen“** – Commit und Tag sind lokal vorhanden:
 ```bash
-# SSH-Key prüfen
 ssh -T git@github.com
+git push origin main && git push origin vX.Y.Z
 ```
-
-**"gh CLI nicht installiert"**
-- GitHub Release wird dann übersprungen
-- Release kann manuell auf github.com erstellt werden
-- Alternativ: `emerge dev-util/github-cli` und `gh auth login`
-
-### Integration mit GitHub Actions
-
-Das Skript triggert via Tag-Push automatisch:
-- `create-discussion.yml` – erstellt eine GitHub Discussion zum Release
-
-Kein manueller GitHub-Zugriff mehr nötig! 🎉

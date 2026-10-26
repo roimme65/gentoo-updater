@@ -9,34 +9,50 @@ on:
 
 jobs:
   syntax-check:
-    name: Python Syntax Check
+    name: Python ${{ matrix.python-version }} - Syntax & Smoke Test
     runs-on: ubuntu-latest
     environment: development
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 = Mindestversion (argparse.BooleanOptionalAction)
+        python-version: [ '3.9', '3.11', '3.12', '3.13' ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Check Python syntax
         run: |
           python -m py_compile gentoo-updater.py
           python -m py_compile install.py
-          echo "✓ Python 3.11 syntax valid"
+          python -m py_compile scripts/create-release.py
+          echo "✓ Python ${{ matrix.python-version }} syntax valid"
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Check Python 3.12 compatibility
+      # Startet die Skripte wirklich (findet z.B. NameError/ImportError, die py_compile nicht sieht)
+      - name: Smoke test
         run: |
-          python -m py_compile gentoo-updater.py
-          python -m py_compile install.py
-          echo "✓ Python 3.12 compatible"
+          python gentoo-updater.py --help > /dev/null
+          python gentoo-updater.py --help --lang en > /dev/null
+          python gentoo-updater.py --version
+          python gentoo-updater.py --author
+          python install.py --version
+          python scripts/create-release.py --help > /dev/null
+          echo "✓ Smoke test passed"
+
+      - name: Check version consistency
+        run: |
+          V1=$(grep -oP '^__version__ = "\K[0-9.]+' gentoo-updater.py)
+          V2=$(grep -oP '^__version__ = "\K[0-9.]+' install.py)
+          if [ "$V1" != "$V2" ]; then
+            echo "❌ Version mismatch: gentoo-updater.py=$V1, install.py=$V2"
+            exit 1
+          fi
+          echo "✓ Versions match: $V1"
 
   code-quality:
     name: Code Quality Check
