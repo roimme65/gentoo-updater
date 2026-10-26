@@ -1,4 +1,4 @@
-## Unreleased
+## v2.0.0 (2026-10-26)
 - **Verhaltensänderung:** Mirrors werden nicht mehr automatisch gesetzt. `make.conf` und `repos.conf` bleiben unverändert, außer bei `--german-mirrors`, `--mirrors` oder `--use-mirrorselect`
 - Neu: `--german-mirrors` / `GENTOO_UPDATER_GERMAN_MIRRORS=true`
 - Rsync-Mirror wird in `/etc/portage/repos.conf/zz-gentoo-updater.conf` gesetzt (nur bei `sync-type = rsync`), `gentoo.conf` bleibt unangetastet
