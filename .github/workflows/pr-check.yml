@@ -4,7 +4,11 @@ run-name: ✅ PR Check - #${{ github.event.pull_request.number }}
 on:
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened ]
+    types: [ opened, synchronize, reopened, edited ]
+
+permissions:
+  contents: read
+  pull-requests: write   # für den Status-Kommentar
 
 jobs:
   pr-validation:
@@ -17,31 +21,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      # PR-Titel nur über env verwenden - direktes ${{ }} im Skript erlaubt Script Injection
       - name: Check PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          if echo "$PR_TITLE" | grep -qE "^(feat|fix|docs|refactor|test|chore|perf):"; then
+          if printf '%s' "$PR_TITLE" | grep -qE "^(feat|fix|docs|refactor|test|chore|perf)(\(.+\))?!?:"; then
             echo "✓ PR title follows conventional commits"
           else
-            echo "⚠ PR title should follow format: type: description"
-            echo "  Types: feat, fix, docs, refactor, test, chore, perf"
+            echo "::warning::PR title should follow format: type: description (feat, fix, docs, refactor, test, chore, perf)"
           fi
 
       - name: Check for breaking changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git log --oneline origin/main..HEAD | grep -qi "BREAKING"; then
-            echo "⚠ Breaking changes detected"
-            echo "Make sure to update CHANGELOG.md and bump major version"
+          if git log --format=%B "$BASE_SHA..$HEAD_SHA" | grep -qE "BREAKING CHANGE|^[a-z]+(\(.+\))?!:"; then
+            echo "::warning::Breaking changes detected - update CHANGELOG.md and bump major version"
           else
             echo "✓ No breaking changes"
           fi
 
       - name: Verify CHANGELOG update
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --name-only origin/main..HEAD | grep -q "CHANGELOG.md"; then
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -qx "CHANGELOG.md"; then
             echo "✓ CHANGELOG.md updated"
           else
-            echo "⚠ Consider updating CHANGELOG.md"
+            echo "::notice::Consider updating CHANGELOG.md"
           fi
 
       - name: Set up Python
@@ -53,20 +63,42 @@ jobs:
         run: |
           python -m py_compile gentoo-updater.py
           python -m py_compile install.py
+          python -m py_compile scripts/create-release.py
+          python gentoo-updater.py --help > /dev/null
+          python install.py --version > /dev/null
           python3 -m json.tool gentoo-updater.conf.example > /dev/null
           echo "✓ All checks passed"
 
+      # Bei PRs aus Forks ist das Token immer read-only - dort kein Kommentar
       - name: Comment on PR
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const marker = '<!-- gentoo-updater-pr-check -->';
+            const body = marker + '\n✅ Automated checks passed!\n\n' +
+                         '- Python syntax (gentoo-updater.py, install.py, create-release.py): ✓\n' +
+                         '- Smoke test (--help, --version): ✓\n' +
+                         '- Config validation (gentoo-updater.conf.example): ✓\n\n' +
+                         `Commit: ${context.payload.pull_request.head.sha.substring(0, 7)}`;
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ Automated checks passed!\n\n' +
-                    '- Python syntax: ✓\n' +
-                    '- Config validation: ✓\n' +
-                    '- File structure: ✓\n\n' +
-                    'Ready for review! 🚀'
-            })
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

@@ -24,6 +24,11 @@
 - install.py: ungenutzten `VersionManager` entfernt (Versionen verwaltet `scripts/create-release.py`)
 - install.py: prüft Python-Mindestversion 3.9, bricht ohne Terminal sauber ab, installiert optionale Pakete in einem `emerge`-Aufruf, aktualisierte Beispiele (`--german-mirrors`, `--use-mirrorselect`, `--mirrors` komma-getrennt)
 - Fix: GitHub-Links (`--repository`, `--support`) zeigten auf das nicht existierende `imme-php/gentoo-updater`, jetzt `roimme65/gentoo-updater`
+- create-release.py: Absturz im interaktiven Modus behoben (`Colors.YELLOW`); Vorab-Prüfungen (sauberes Arbeitsverzeichnis, Branch `main`, Tag frei, nicht hinter origin); Abbruch bei Commit-Fehler statt Tag auf altem Commit; committet nur die Release-Dateien statt `git add -A`
+- create-release.py: übernimmt `## Unreleased` aus dem CHANGELOG als Version und in die Release-Notes; erkennt `feat(scope):`; neue Option `--no-push`; GitHub Release nur noch über `release.yml` (kein `gh` nötig)
+- CI: Test-Matrix Python 3.9/3.11/3.12/3.13 mit Smoke-Test (`--help`, `--version`) und Versionsabgleich gentoo-updater.py/install.py
+- CI: PR-Check mit Schreibrecht für den Status-Kommentar (schlug bisher fehl), Script Injection über den PR-Titel behoben, Kommentar wird aktualisiert statt neu gepostet
+- CI: `softprops/action-gh-release@v2`; Release-Workflow prüft auch die Version in install.py; Discussion-Workflow nutzt GraphQL-Variablen, wählt die Kategorie *Announcements*, ist bei Wiederholung idempotent und schlägt bei Fehlern sichtbar fehl
 
 ## v1.4.44 (2026-04-10)
 - Release

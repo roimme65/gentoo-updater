@@ -14,64 +14,55 @@ jobs:
       discussions: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Create Discussion from Release Tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          CATEGORY_NAME: Announcements
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          REPO="${GITHUB_REPOSITORY}"
-          OWNER="${REPO%/*}"
-          REPO_NAME="${REPO#*/}"
-          
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          TITLE="Release $VERSION"
+
           echo "Creating discussion for: $VERSION"
-          
-          # Hole Repository ID
-          REPO_ID=$(curl -s -X POST https://api.github.com/graphql \
-            -H "Authorization: bearer ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"query\": \"query { repository(owner: \\\"$OWNER\\\", name: \\\"$REPO_NAME\\\") { id } }\"}" \
-            | jq -r '.data.repository.id')
-          
-          echo "Repository ID: $REPO_ID"
-          
-          if [ "$REPO_ID" = "null" ] || [ -z "$REPO_ID" ]; then
-            echo "❌ Could not get repository ID"
+
+          # Repository-ID, Kategorien und vorhandene Discussions in einer Abfrage
+          INFO=$(gh api graphql \
+            -f owner="$OWNER" -f name="$REPO_NAME" \
+            -f query='query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                id
+                discussionCategories(first: 25) { nodes { id name } }
+                discussions(first: 50, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { title url } }
+              }
+            }')
+
+          REPO_ID=$(jq -r '.data.repository.id' <<< "$INFO")
+          # Gewünschte Kategorie, sonst die erste vorhandene
+          CAT_ID=$(jq -r --arg name "$CATEGORY_NAME" \
+            '.data.repository.discussionCategories.nodes | (map(select(.name == $name))[0] // .[0]) | .id // empty' <<< "$INFO")
+          EXISTING=$(jq -r --arg title "$TITLE" \
+            '.data.repository.discussions.nodes[] | select(.title == $title) | .url' <<< "$INFO" | head -n1)
+
+          if [ -n "$EXISTING" ]; then
+            echo "✓ Discussion existiert bereits: $EXISTING"
+            exit 0
+          fi
+
+          if [ -z "$CAT_ID" ]; then
+            echo "::error::Keine Discussion-Kategorie gefunden (Discussions aktiviert?)"
             exit 1
           fi
-          
-          # Hole erste Discussion Category ID  
-          CAT_ID=$(curl -s -X POST https://api.github.com/graphql \
-            -H "Authorization: bearer ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"query\": \"query { repository(owner: \\\"$OWNER\\\", name: \\\"$REPO_NAME\\\") { discussionCategories(first: 1) { edges { node { id } } } } }\"}" \
-            | jq -r '.data.repository.discussionCategories.edges[0].node.id // empty')
-          
-          echo "Category ID: ${CAT_ID:-(none)}"
-          
-          # Erstelle Discussion mit einfachem Body
-          if [ ! -z "$CAT_ID" ]; then
-            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", categoryId: \\\"$CAT_ID\\\", title: \\\"Release $VERSION\\\", body: \\\"Release Notes verfügbar unter: https://github.com/$REPO/releases/tag/$VERSION\\\"}) { discussion { id url } } }"
-          else
-            QUERY="mutation { createDiscussion(input: {repositoryId: \\\"$REPO_ID\\\", title: \\\"Release $VERSION\\\", body: \\\"Release Notes verfügbar unter: https://github.com/$REPO/releases/tag/$VERSION\\\"}) { discussion { id url } } }"
-          fi
-          
-          echo "Executing mutation..."
-          RESPONSE=$(curl -s -X POST https://api.github.com/graphql \
-            -H "Authorization: bearer ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"query\": \"$QUERY\"}")
-          
-          echo "Response: $RESPONSE"
-          
-          # Prüfe auf Erfolg
-          if echo "$RESPONSE" | jq -e '.data.createDiscussion.discussion.id' > /dev/null 2>&1; then
-            echo "✅ Discussion erstellt!"
-            URL=$(echo "$RESPONSE" | jq -r '.data.createDiscussion.discussion.url')
-            echo "URL: $URL"
-          else
-            ERROR=$(echo "$RESPONSE" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null || echo "JSON error")
-            echo "⚠️ Discussion konnte nicht erstellt werden: $ERROR"
-          fi
+
+          BODY="Release Notes: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION}"
+
+          RESPONSE=$(gh api graphql \
+            -f repositoryId="$REPO_ID" -f categoryId="$CAT_ID" -f title="$TITLE" -f body="$BODY" \
+            -f query='mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+              createDiscussion(input: {repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body}) {
+                discussion { url }
+              }
+            }')
+
+          echo "✅ Discussion erstellt: $(jq -r '.data.createDiscussion.discussion.url' <<< "$RESPONSE")"
