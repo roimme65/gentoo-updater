@@ -21,6 +21,8 @@
 - `--max-packages` ist veraltet und wird ignoriert
 - Root-Prüfung vor dem Anlegen des Log-Verzeichnisses; ungültige Zahlen in Umgebungsvariablen geben eine klare Fehlermeldung
 - `shutil.which()` statt externem `which` (kein Abbruch, wenn `sys-apps/which` fehlt); mirrorselect-Hinweis nur noch bei `--use-mirrorselect`
+- install.py: ungenutzten `VersionManager` entfernt (Versionen verwaltet `scripts/create-release.py`)
+- install.py: prüft Python-Mindestversion 3.9, bricht ohne Terminal sauber ab, installiert optionale Pakete in einem `emerge`-Aufruf, aktualisierte Beispiele (`--german-mirrors`, `--use-mirrorselect`, `--mirrors` komma-getrennt)
 - Fix: GitHub-Links (`--repository`, `--support`) zeigten auf das nicht existierende `imme-php/gentoo-updater`, jetzt `roimme65/gentoo-updater`
 
 ## v1.4.44 (2026-04-10)
