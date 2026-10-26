@@ -1,3 +1,28 @@
+## Unreleased
+- **Verhaltensänderung:** Mirrors werden nicht mehr automatisch gesetzt. `make.conf` und `repos.conf` bleiben unverändert, außer bei `--german-mirrors`, `--mirrors` oder `--use-mirrorselect`
+- Neu: `--german-mirrors` / `GENTOO_UPDATER_GERMAN_MIRRORS=true`
+- Rsync-Mirror wird in `/etc/portage/repos.conf/zz-gentoo-updater.conf` gesetzt (nur bei `sync-type = rsync`), `gentoo.conf` bleibt unangetastet
+- `--use-mirrorselect` wird jetzt ausgewertet; mirrorselect-Ergebnis wird korrekt aus der Ausgabe (`-o`) gelesen
+- Dry-Run schreibt keine Konfigurationsdateien mehr
+- Autounmask-Recovery schreibt nur nach `/etc/portage` (`CONFIG_PROTECT_MASK`) statt globalem `etc-update --automode -3`
+- `--etc-update-mode interactive` wird ohne Terminal (cron/systemd) übersprungen
+- Backup umfasst zusätzlich `package.license`, `package.unmask` und `repos.conf`
+- Fix: `--only-update` stürzte ab (`update_world` existierte nicht)
+- Fix: `--backtrack`, `--log-level`, `--retry-count` wurden durch Env-Defaults überschrieben
+- Fix: `--skip-update`, `--skip-cleanup`, `--skip-revdep` hatten keine Wirkung
+- Fix: Zusammenfassung wurde ohne verfügbare Updates doppelt ausgegeben
+- Fix: `critical_packages_in_update` enthielt nur den letzten Treffer
+- Fix: Kritische Pakete und Kernel-Updates werden über exakte Paketnamen erkannt (`dev-lang/python-exec` löst keine Python-Nachbehandlung mehr aus; `gentoo-kernel(-bin)` wird erkannt, `linux-firmware` nicht)
+- Fix: Nur harte Blocker (`[blocks B]`) brechen ab, weiche Blocker löst Portage selbst
+- Fix: Entfernte Pakete aus depclean werden in der Zusammenfassung angezeigt
+- `emerge --pretend @world` läuft nur noch einmal; schlägt es fehl, wird das Update trotzdem versucht (autounmask-Recovery)
+- `--ask=n` für emerge-Aufrufe, damit ein `--ask` aus `EMERGE_DEFAULT_OPTS` nicht blockiert
+- Neu umgesetzt: `--timeout` (je Befehl), `--retry-count` (Sync-Versuche), `--notification-webhook` (JSON per POST)
+- `--max-packages` ist veraltet und wird ignoriert
+- Root-Prüfung vor dem Anlegen des Log-Verzeichnisses; ungültige Zahlen in Umgebungsvariablen geben eine klare Fehlermeldung
+- `shutil.which()` statt externem `which` (kein Abbruch, wenn `sys-apps/which` fehlt); mirrorselect-Hinweis nur noch bei `--use-mirrorselect`
+- Fix: GitHub-Links (`--repository`, `--support`) zeigten auf das nicht existierende `imme-php/gentoo-updater`, jetzt `roimme65/gentoo-updater`
+
 ## v1.4.44 (2026-04-10)
 - Release
 

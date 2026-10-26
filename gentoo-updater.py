@@ -18,6 +18,9 @@ import json
 import re
 import locale
 import socket
+import configparser
+import threading
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
@@ -46,18 +49,11 @@ CURRENT_LANGUAGE = detect_system_language()
 # ========================
 
 def detect_emoji_support() -> bool:
-    """Prüft ob das Terminal Emojis unterstützt"""
+    """Prüft ob die Ausgabe Emojis darstellen kann (UTF-8-Kodierung von stdout)"""
     try:
-        # Schreibe ein Emoji und lese es zurück
-        import subprocess
-        result = subprocess.run(
-            ['printf', '🇩🇪'],
-            capture_output=True,
-            text=True
-        )
-        # Wenn das Emoji korrekt ausgegeben wird, unterstützt das Terminal Emojis
-        return len(result.stdout) > 0
-    except:
+        encoding = (sys.stdout.encoding or '').lower().replace('-', '')
+        return encoding == 'utf8'
+    except Exception:
         # Im Fehlerfall vorsichtig sein und ASCII verwenden
         return False
 
@@ -278,8 +274,8 @@ TRANSLATIONS = {
         'en': '⏭️  Skipping eix update (--skip-eix)'
     },
     'SYNC_FAILED': {
-        'de': 'Repository-Synchronisation fehlgeschlagen nach 2 Versuchen',
-        'en': 'Repository synchronisation failed after 2 attempts'
+        'de': 'Repository-Synchronisation fehlgeschlagen nach {attempts} Versuchen',
+        'en': 'Repository synchronisation failed after {attempts} attempts'
     },
     'MODULES_CURRENT': {
         'de': 'Kernel-Module sind aktuell - keine Neucompilierung nötig',
@@ -341,10 +337,6 @@ TRANSLATIONS = {
         'de': 'Anzahl zu aktualisierender Pakete auf {max} begrenzt',
         'en': 'Limiting packages to update to {max}'
     },
-    'MIRRORSELECT_AVAILABLE': {
-        'de': '✓ mirrorselect für deutsche Mirror-Auswahl verfügbar',
-        'en': '✓ mirrorselect for German mirror selection available'
-    },
     'MIRRORSELECT_NOT_INSTALLED': {
         'de': '⚠ mirrorselect ist nicht installiert',
         'en': '⚠ mirrorselect is not installed'
@@ -354,8 +346,8 @@ TRANSLATIONS = {
         'en': '  Tip: sudo emerge -a app-portage/mirrorselect'
     },
     'MIRRORSELECT_BENEFIT': {
-        'de': '  Dies ermöglicht automatische Auswahl des schnellsten deutschen Mirrors',
-        'en': '  This enables automatic selection of the fastest German mirrors'
+        'de': '  --use-mirrorselect benötigt mirrorselect - Mirrors bleiben unverändert',
+        'en': '  --use-mirrorselect requires mirrorselect - mirrors remain unchanged'
     },
 }
 
@@ -452,16 +444,16 @@ HELP_TEXTS = {
         'en': 'Execute only depclean'
     },
     'max_packages': {
-        'de': 'Begrenze Anzahl der zu aktualisierenden Pakete',
-        'en': 'Limit number of packages to update'
+        'de': 'Veraltet und ohne Wirkung (Teil-Updates von @world können Abhängigkeiten brechen)',
+        'en': 'Deprecated and ignored (partial @world updates can break dependencies)'
     },
     'timeout': {
-        'de': 'Timeout in Sekunden für emerge-Operationen',
-        'en': 'Timeout in seconds for emerge operations'
+        'de': 'Timeout in Sekunden je ausgeführtem Befehl (emerge, sync, ...)',
+        'en': 'Timeout in seconds per executed command (emerge, sync, ...)'
     },
     'retry_count': {
-        'de': 'Anzahl der Wiederholungsversuche bei Fehler (Standard: 1)',
-        'en': 'Number of retries on failure (default: 1)'
+        'de': 'Anzahl der Wiederholungsversuche bei Sync-Fehler (Standard: 1)',
+        'en': 'Number of retries on sync failure (default: 1)'
     },
     'notification_webhook': {
         'de': 'Sende Abschluss-Benachrichtigung an Webhook-URL',
@@ -480,12 +472,16 @@ HELP_TEXTS = {
         'en': 'Custom Gentoo mirrors (comma-separated URLs)'
     },
     'use_mirrorselect': {
-        'de': 'Nutze mirrorselect für automatische Auswahl des schnellsten Mirrors',
-        'en': 'Use mirrorselect for automatic selection of fastest mirror'
+        'de': 'Mirrors interaktiv mit mirrorselect auswählen und in make.conf/repos.conf setzen',
+        'en': 'Select mirrors interactively with mirrorselect and write them to make.conf/repos.conf'
+    },
+    'german_mirrors': {
+        'de': 'Deutsche Distfile- und Rsync-Mirrors setzen (ändert make.conf/repos.conf)',
+        'en': 'Set German distfile and rsync mirrors (modifies make.conf/repos.conf)'
     },
     'etc_update_mode': {
-        'de': 'Modus für Konfigurationsdateien-Updates (Standard: interaktiv)',
-        'en': 'Mode for configuration file updates (default: interactive)'
+        'de': 'Modus für Konfigurationsdateien-Updates (Standard: interaktiv; auto überschreibt eigene Anpassungen in /etc)',
+        'en': 'Mode for configuration file updates (default: interactive; auto overwrites local changes in /etc)'
     },
     'auto_autounmask': {
         'de': 'Aktiviere automatische Portage-Autounmask-Recovery (--autounmask-write + Config-Merge + Retry)',
@@ -537,11 +533,11 @@ def get_help_text(key: str) -> str:
 # GitHub Integration
 # ========================
 
-GITHUB_REPO = 'https://github.com/imme-php/gentoo-updater'
-GITHUB_ISSUES = 'https://github.com/imme-php/gentoo-updater/issues'
-GITHUB_DISCUSSIONS = 'https://github.com/imme-php/gentoo-updater/discussions'
-GITHUB_ISSUE_TEMPLATE_BUG = 'https://github.com/imme-php/gentoo-updater/issues/new?template=bug_report.md'
-GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/imme-php/gentoo-updater/issues/new?template=feature_request.md'
+GITHUB_REPO = 'https://github.com/roimme65/gentoo-updater'
+GITHUB_ISSUES = 'https://github.com/roimme65/gentoo-updater/issues'
+GITHUB_DISCUSSIONS = 'https://github.com/roimme65/gentoo-updater/discussions'
+GITHUB_ISSUE_TEMPLATE_BUG = 'https://github.com/roimme65/gentoo-updater/issues/new?template=bug_report.md'
+GITHUB_ISSUE_TEMPLATE_FEATURE = 'https://github.com/roimme65/gentoo-updater/issues/new?template=feature_request.md'
 
 # ========================
 # German Mirrors (Default)
@@ -569,6 +565,36 @@ DEFAULT_GERMAN_MIRRORS_RSYNC = [
 DEFAULT_GERMAN_MIRRORS = DEFAULT_GERMAN_MIRRORS_DISTFILES
 
 CUSTOM_MIRRORS = None  # Will be set from CLI arguments or env vars
+
+MAKE_CONF_PATH = '/etc/portage/make.conf'
+REPOS_CONF_DIR = '/etc/portage/repos.conf'
+# Eigene Datei, die gentoo.conf überschreibt (alphabetisch zuletzt gelesen)
+UPDATER_REPOS_CONF = '/etc/portage/repos.conf/zz-gentoo-updater.conf'
+# GENTOO_MIRRORS="..." am Zeilenanfang (auskommentierte Zeilen werden ignoriert)
+GENTOO_MIRRORS_PATTERN = re.compile(r'^([ \t]*)GENTOO_MIRRORS\s*=\s*"([^"]*)"', re.MULTILINE)
+
+# Paketzeilen aus emerge --pretend, z.B. "[ebuild     U  ] dev-lang/python-3.12.5:3.12::gentoo [3.12.4]"
+EMERGE_PACKAGE_LINE_PATTERN = re.compile(r'^\[(?:ebuild|binary)[^\]]*\]\s+(\S+)', re.MULTILINE)
+
+# Kernel-Pakete, deren Update einen Modul-Rebuild erfordert (zusätzlich zu *-sources)
+KERNEL_PACKAGES = {'sys-kernel/gentoo-kernel', 'sys-kernel/gentoo-kernel-bin', 'sys-kernel/vanilla-kernel'}
+
+
+def parse_emerge_packages(output: str) -> List[str]:
+    """Extrahiert die Paket-Atome (cat/pkg-version) aus emerge-Ausgabe"""
+    return EMERGE_PACKAGE_LINE_PATTERN.findall(output or '')
+
+
+def package_name(atom: str) -> str:
+    """Entfernt Version, Slot und Repository: 'dev-lang/python-3.12.5:3.12::gentoo' -> 'dev-lang/python'"""
+    atom = atom.split('::')[0].split(':')[0]
+    match = re.match(r'(.+?)-\d[^/]*$', atom)
+    return match.group(1) if match else atom
+
+
+def is_kernel_package(name: str) -> bool:
+    """Prüft, ob ein Paketname (ohne Version) ein Kernel-Paket ist"""
+    return name in KERNEL_PACKAGES or (name.startswith('sys-kernel/') and name.endswith('-sources'))
 
 
 class Colors:
@@ -603,8 +629,8 @@ def check_internet_connection() -> bool:
     for host, port in test_hosts:
         try:
             # Versucht Verbindung zu öffnen (Timeout: 3 Sekunden)
-            socket.create_connection((host, port), timeout=3)
-            return True
+            with socket.create_connection((host, port), timeout=3):
+                return True
         except (socket.timeout, socket.error, OSError):
             # Host nicht erreichbar, versuche nächsten
             continue
@@ -696,7 +722,8 @@ class GentooUpdater:
                  log_level: str = 'INFO', timeout: Optional[int] = None,
                  retry_count: int = 1, webhook_url: Optional[str] = None,
                  max_packages: Optional[int] = None, custom_mirrors: Optional[List[str]] = None,
-                 etc_update_mode: str = 'interactive', auto_autounmask: bool = True):
+                 etc_update_mode: str = 'interactive', auto_autounmask: bool = True,
+                 use_mirrorselect: bool = False, german_mirrors: bool = False):
         self.verbose = verbose
         self.dry_run = dry_run
         self.rebuild_modules = rebuild_modules
@@ -706,7 +733,9 @@ class GentooUpdater:
         self.retry_count = retry_count
         self.webhook_url = webhook_url
         self.max_packages = max_packages
-        self.custom_mirrors = custom_mirrors
+        self.custom_mirrors = custom_mirrors  # Distfile-Mirrors, nur gesetzt wenn explizit angefordert
+        self.use_mirrorselect = use_mirrorselect
+        self.german_mirrors = german_mirrors
         self.etc_update_mode = etc_update_mode  # interactive, auto, oder skip
         self.auto_autounmask = auto_autounmask
         
@@ -716,7 +745,10 @@ class GentooUpdater:
         self.skip_eix = False
         self.skip_cleanup = False
         self.skip_revdep = False
-        
+
+        # Zwischengespeichertes Ergebnis von emerge --pretend @world (siehe run_world_pretend)
+        self.pretend_result = None
+
         # Logging einrichten
         self.log_dir = Path('/var/log/gentoo-updater')
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -840,6 +872,9 @@ class GentooUpdater:
                 '/etc/portage/make.conf',
                 '/etc/portage/package.use',
                 '/etc/portage/package.accept_keywords',
+                '/etc/portage/package.license',
+                '/etc/portage/package.unmask',
+                '/etc/portage/repos.conf',
                 '/var/lib/portage/world'
             ]
             
@@ -870,48 +905,54 @@ class GentooUpdater:
         except Exception as e:
             self.print_warning(f"Konnte alte Backups nicht löschen: {e}")
     
-    def check_blocked_packages(self, auto_resolve: bool = False) -> bool:
+    def run_world_pretend(self) -> subprocess.CompletedProcess:
+        """Führt emerge --pretend für @world aus (gleiche Optionen wie das echte Update)
+
+        Das Ergebnis wird in self.pretend_result zwischengespeichert, damit
+        Blockierungs-, Update- und Kernel-Prüfung nur einen Lauf benötigen.
+        """
+        if self.pretend_result is None:
+            self.pretend_result = subprocess.run(
+                ["emerge", "--update", "--deep", "--newuse",
+                 "--with-bdeps=y", "--pretend", "@world"],
+                capture_output=True,
+                text=True
+            )
+        return self.pretend_result
+
+    def check_blocked_packages(self, pretend_output: str, auto_resolve: bool = False) -> bool:
         """Prüft auf blockierte Pakete
-        
+
         Args:
+            pretend_output: Ausgabe von emerge --pretend @world
             auto_resolve: Wenn True, wird nur gewarnt statt zu stoppen
-        
+
         Returns:
             True wenn keine Blockierungen oder auto_resolve=True, sonst False
         """
         self.print_info("Prüfe auf blockierte Pakete...")
-        
-        try:
-            result = subprocess.run(
-                ["emerge", "--update", "--deep", "--newuse", "--pretend", "@world"],
-                capture_output=True,
-                text=True
-            )
-            
-            if "blocked by" in result.stdout.lower() or "blocking" in result.stdout.lower():
-                print(result.stdout)
-                
-                if auto_resolve:
-                    # Nur als Warnung, nicht als permanenter Fehler - wird mit --backtrack versucht zu beheben
-                    self.print_warning("Blockierte Pakete gefunden. Versuche mit --backtrack zu beheben...")
-                    return True  # Fortfahren und --backtrack in emerge verwenden
-                else:
-                    self.print_error(_('BLOCKED_PACKAGES_FOUND'))
-                    self.print_info(_('BLOCKED_INFO'))
-                    return False
-            return True
-        except Exception as e:
-            self.print_warning(f"Konnte Blockierungen nicht prüfen: {e}")
-            return True
+
+        # Ungelöste (harte) Blocker: "[blocks B      ] ..."
+        # Weiche Blocker "[blocks b      ]" löst Portage selbst auf und werden ignoriert
+        if re.search(r'^\[blocks B', pretend_output, re.MULTILINE):
+            print(pretend_output)
+
+            if auto_resolve:
+                # Nur als Warnung, nicht als permanenter Fehler - wird mit --backtrack versucht zu beheben
+                self.print_warning("Blockierte Pakete gefunden. Versuche mit --backtrack zu beheben...")
+                return True  # Fortfahren und --backtrack in emerge verwenden
+            else:
+                self.print_error(_('BLOCKED_PACKAGES_FOUND'))
+                self.print_info(_('BLOCKED_INFO'))
+                return False
+        return True
     
     def detect_critical_updates(self, pretend_output: str) -> List[str]:
         """Erkennt kritische Paket-Updates und speichert sie in stats"""
         critical_packages = self.config.get('critical_packages', [])
-        found_critical = []
-        
-        for pkg in critical_packages:
-            if pkg in pretend_output:
-                found_critical.append(pkg)
+        # Exakter Vergleich der Paketnamen (dev-lang/python != dev-lang/python-exec)
+        updated_names = {package_name(atom) for atom in parse_emerge_packages(pretend_output)}
+        found_critical = [pkg for pkg in critical_packages if pkg in updated_names]
         
         if found_critical:
             self.print_warning(_('CRITICAL_PACKAGES_WARNING'))
@@ -937,227 +978,249 @@ class GentooUpdater:
     
     def get_gentoo_mirrors(self) -> List[str]:
         """Liest die GENTOO_MIRRORS aus /etc/portage/make.conf
-        
+
         Returns:
             Liste der konfigurierten Mirrors
         """
         mirrors = []
-        make_conf_path = '/etc/portage/make.conf'
-        
+        make_conf_path = MAKE_CONF_PATH
+
         if not os.path.exists(make_conf_path):
             self.print_warning(_('MANIFEST_FILE_NOT_FOUND', path=make_conf_path))
             return mirrors
-        
+
         try:
             with open(make_conf_path, 'r') as f:
                 content = f.read()
-            
-            # Suche nach GENTOO_MIRRORS Variable
+
+            # Suche nach GENTOO_MIRRORS Variable (keine auskommentierten Zeilen)
             # Berücksichtigt mehrzeilige Definitionen mit Backslash
-            import re
-            pattern = r'GENTOO_MIRRORS\s*=\s*"([^"]+)"'
-            match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
-            
+            match = GENTOO_MIRRORS_PATTERN.search(content)
+
             if match:
-                mirrors_str = match.group(1)
+                mirrors_str = match.group(2)
                 # Entferne Backslashes und extra Whitespace
                 mirrors_str = mirrors_str.replace('\\', ' ').replace('\n', ' ')
                 # Teile nach Whitespace und filtere leere Strings
                 mirrors = [m.strip() for m in mirrors_str.split() if m.strip()]
                 self.stats['gentoo_mirrors'] = mirrors
             else:
-                self.print_warning("GENTOO_MIRRORS nicht in make.conf gefunden")
-        
+                self.print_info("GENTOO_MIRRORS nicht in make.conf gesetzt - Portage verwendet den Standard")
+
         except Exception as e:
             self.print_warning(f"Fehler beim Lesen der Mirrors aus make.conf: {e}")
-        
+
         return mirrors
-    
-    def auto_select_best_mirror_distfiles(self) -> Optional[List[str]]:
-        """Nutzt mirrorselect um die schnellsten deutschen Distfile-Mirror automatisch zu wählen
-        
-        Befehl: mirrorselect -i -o
-        Öffnet eine ncurses-UI zur interaktiven Auswahl deutscher Distfile-Mirror
-        
+
+    def get_gentoo_repo_config(self) -> Dict[str, str]:
+        """Liest die effektive Konfiguration des [gentoo]-Repositories
+
+        Berücksichtigt die Portage-Defaults und alle Dateien in /etc/portage/repos.conf
+        in der Reihenfolge, in der Portage sie liest (spätere Dateien überschreiben frühere).
+
         Returns:
-            Liste der schnellsten Mirror URLs oder None wenn mirrorselect nicht verfügbar
+            Dict mit den Schlüsseln des [gentoo]-Abschnitts (z.B. sync-type, sync-uri)
         """
-        self.print_info("Öffne mirrorselect zur Auswahl deutscher Distfile-Mirror...")
-        self.print_info("(Leertaste zum Auswählen, Enter zum Bestätigen)")
-        
+        files = ['/usr/share/portage/config/repos.conf']
+        if os.path.isdir(REPOS_CONF_DIR):
+            files += sorted(str(p) for p in Path(REPOS_CONF_DIR).iterdir() if p.is_file())
+        elif os.path.isfile(REPOS_CONF_DIR):
+            files.append(REPOS_CONF_DIR)
+
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
         try:
-            # Prüfe ob mirrorselect installiert ist
-            which_result = subprocess.run(
-                ["which", "mirrorselect"],
-                capture_output=True,
-                timeout=5
-            )
-            
-            if which_result.returncode != 0:
-                self.print_info("mirrorselect nicht verfügbar - verwende Standard-Mirror")
-                return None
-            
-            # Führe mirrorselect für Distfiles aus: -i (interaktiv), -o (output)
-            # Dies öffnet eine ncurses-Liste zur Auswahl deutscher Distfile-Mirror
-            result = subprocess.run(
-                ["mirrorselect", "-i", "-o"],  # -i = interaktiv mit UI, -o = output format
-                timeout=120  # Mehr Zeit für interaktive Auswahl durch Benutzer
-            )
-            
-            if result.returncode == 0:
-                # Lese die aktualisierte make.conf
-                make_conf_path = '/etc/portage/make.conf'
-                if os.path.exists(make_conf_path):
-                    with open(make_conf_path, 'r') as f:
-                        content = f.read()
-                    # Extrahiere GENTOO_MIRRORS
-                    pattern = r'GENTOO_MIRRORS\s*=\s*"([^"]+)"'
-                    match = re.search(pattern, content)
-                    if match:
-                        mirrors_str = match.group(1)
-                        mirror_urls = [m.strip() for m in mirrors_str.split() if m.strip()]
-                        if mirror_urls:
-                            self.print_success(f"Mirror ausgewählt: {', '.join(mirror_urls[:2])}...")
-                            return mirror_urls
-                
+            parser.read(files)
+        except configparser.Error as e:
+            self.print_warning(f"Konnte repos.conf nicht lesen: {e}")
+            return {}
+
+        if not parser.has_section('gentoo'):
+            return {}
+        return dict(parser.items('gentoo'))
+
+    def write_make_conf_mirrors(self, mirrors: List[str]) -> bool:
+        """Schreibt GENTOO_MIRRORS in make.conf (mit Sicherung, respektiert Dry-Run)"""
+        make_conf_path = MAKE_CONF_PATH
+
+        if not os.path.isfile(make_conf_path):
+            self.print_warning(_('MANIFEST_FILE_NOT_FOUND', path=make_conf_path))
+            return False
+
+        try:
+            with open(make_conf_path, 'r') as f:
+                content = f.read()
+
+            mirrors_value = ' '.join(mirrors)
+            new_line = f'GENTOO_MIRRORS="{mirrors_value}"'
+
+            if GENTOO_MIRRORS_PATTERN.search(content):
+                updated_content = GENTOO_MIRRORS_PATTERN.sub(lambda m: m.group(1) + new_line, content, count=1)
             else:
-                if result.returncode == 130:  # Ctrl+C
-                    self.print_info("Mirror-Auswahl abgebrochen")
-                else:
-                    self.print_warning(f"mirrorselect fehlgeschlagen (Code: {result.returncode})")
-                
+                updated_content = content.rstrip() + f'\n\n# Gentoo Mirrors (Distfiles) - gesetzt von gentoo-updater\n{new_line}\n'
+
+            if updated_content == content:
+                self.logger.info("make.conf enthält bereits die gewünschten Mirrors")
+                return True
+
+            if self.dry_run:
+                self.print_warning(f"DRY-RUN: Würde in {make_conf_path} setzen: {new_line}")
+                return True
+
+            backup_path = make_conf_path + '.gentoo-updater.bak'
+            shutil.copy2(make_conf_path, backup_path)
+            with open(make_conf_path, 'w') as f:
+                f.write(updated_content)
+            self.print_success(f"make.conf aktualisiert: {new_line} (Sicherung: {backup_path})")
+            return True
+
+        except Exception as e:
+            self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
+            return False
+
+    def write_rsync_mirror(self, sync_uri: str) -> bool:
+        """Setzt den Rsync-Mirror über eine eigene Datei in repos.conf
+
+        Statt gentoo.conf zu bearbeiten, wird /etc/portage/repos.conf/zz-gentoo-updater.conf
+        angelegt. Portage liest die Dateien alphabetisch, spätere Einträge überschreiben
+        frühere. Rückgängig machen: Datei löschen.
+        Wird nur angewendet, wenn das gentoo-Repository per rsync synchronisiert wird.
+        """
+        if not os.path.isdir(REPOS_CONF_DIR):
+            self.print_warning(f"{REPOS_CONF_DIR} ist kein Verzeichnis - Rsync-Mirror wird nicht gesetzt")
+            return False
+
+        sync_type = self.get_gentoo_repo_config().get('sync-type', '')
+        if sync_type != 'rsync':
+            self.print_warning(f"gentoo-Repository verwendet sync-type '{sync_type or 'unbekannt'}' "
+                               f"statt rsync - Rsync-Mirror wird nicht gesetzt")
+            return False
+
+        content = (
+            "# Verwaltet von gentoo-updater - Datei löschen, um den Standard-Mirror zu verwenden\n"
+            "[gentoo]\n"
+            f"sync-uri = {sync_uri}\n"
+        )
+
+        try:
+            if os.path.exists(UPDATER_REPOS_CONF):
+                with open(UPDATER_REPOS_CONF, 'r') as f:
+                    if f.read() == content:
+                        self.logger.info(f"Rsync-Mirror bereits gesetzt: {sync_uri}")
+                        return True
+
+            if self.dry_run:
+                self.print_warning(f"DRY-RUN: Würde {UPDATER_REPOS_CONF} mit sync-uri = {sync_uri} schreiben")
+                return True
+
+            with open(UPDATER_REPOS_CONF, 'w') as f:
+                f.write(content)
+            self.print_success(f"Rsync-Mirror gesetzt: {sync_uri} ({UPDATER_REPOS_CONF})")
+            return True
+
+        except Exception as e:
+            self.print_warning(f"Konnte {UPDATER_REPOS_CONF} nicht schreiben: {e}")
+            return False
+
+    def auto_select_best_mirror_distfiles(self) -> Optional[List[str]]:
+        """Nutzt mirrorselect zur interaktiven Auswahl der Distfile-Mirrors
+
+        Befehl: mirrorselect -i -o
+        Öffnet eine ncurses-UI; mit -o wird das Ergebnis nur auf stdout ausgegeben
+        (GENTOO_MIRRORS="..."), make.conf wird dabei nicht verändert.
+
+        Returns:
+            Liste der ausgewählten Mirror URLs oder None
+        """
+        if not shutil.which("mirrorselect"):
+            self.print_warning(_('MIRRORSELECT_NOT_INSTALLED'))
+            return None
+
+        self.print_info("Öffne mirrorselect zur Auswahl der Distfile-Mirrors...")
+        self.print_info("(Leertaste zum Auswählen, Enter zum Bestätigen)")
+
+        try:
+            # stdout wird gelesen, die UI läuft über das Terminal (stderr)
+            result = subprocess.run(
+                ["mirrorselect", "-i", "-o"],
+                stdout=subprocess.PIPE,
+                text=True,
+                timeout=300
+            )
+
+            if result.returncode == 0:
+                match = re.search(r'GENTOO_MIRRORS\s*=\s*"([^"]*)"', result.stdout)
+                if match:
+                    mirror_urls = match.group(1).replace('\\', ' ').split()
+                    if mirror_urls:
+                        self.print_success(f"Mirror ausgewählt: {', '.join(mirror_urls)}")
+                        return mirror_urls
+                self.print_warning("mirrorselect hat keine Mirrors zurückgegeben")
+            elif result.returncode == 130:  # Ctrl+C
+                self.print_info("Mirror-Auswahl abgebrochen")
+            else:
+                self.print_warning(f"mirrorselect fehlgeschlagen (Code: {result.returncode})")
+
         except subprocess.TimeoutExpired:
-            self.print_warning("mirrorselect Timeout - verwende Standard-Mirror")
+            self.print_warning("mirrorselect Timeout - Mirrors bleiben unverändert")
         except Exception as e:
             self.print_warning(f"Fehler bei mirrorselect: {e}")
-        
+
         return None
-    
+
     def auto_select_best_mirror_rsync(self) -> Optional[str]:
-        """Nutzt mirrorselect um den schnellsten deutschen Rsync-Mirror automatisch zu wählen
-        
-        Befehl: mirrorselect -i -r
-        Öffnet eine ncurses-UI zur interaktiven Auswahl eines Rsync-Mirror
-        
+        """Nutzt mirrorselect zur interaktiven Auswahl eines Rsync-Mirrors
+
+        Befehl: mirrorselect -i -r -o
+        Mit -o wird das Ergebnis nur auf stdout ausgegeben, repos.conf bleibt unverändert.
+
         Returns:
-            Schnellster Rsync-Mirror URL oder None wenn mirrorselect nicht verfügbar
+            Ausgewählte Rsync-URL oder None
         """
-        self.print_info("Öffne mirrorselect zur Auswahl des deutschen Rsync-Mirror...")
+        if not shutil.which("mirrorselect"):
+            return None
+
+        self.print_info("Öffne mirrorselect zur Auswahl des Rsync-Mirrors...")
         self.print_info("(Leertaste zum Auswählen, Enter zum Bestätigen)")
-        
+
         try:
-            # Prüfe ob mirrorselect installiert ist
-            which_result = subprocess.run(
-                ["which", "mirrorselect"],
-                capture_output=True,
-                timeout=5
-            )
-            
-            if which_result.returncode != 0:
-                return None
-            
-            # Führe mirrorselect für Rsync aus: -i (interaktiv), -r (rsync only)
             result = subprocess.run(
-                ["mirrorselect", "-i", "-r"],  # -i = interaktiv, -r = rsync only
-                timeout=120
+                ["mirrorselect", "-i", "-r", "-o"],
+                stdout=subprocess.PIPE,
+                text=True,
+                timeout=300
             )
-            
+
             if result.returncode == 0:
-                # Lese die aktualisierte make.conf für sync-uri
-                repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
-                if os.path.exists(repos_conf_path):
-                    with open(repos_conf_path, 'r') as f:
-                        content = f.read()
-                    # Extrahiere sync-uri
-                    match = re.search(r'sync-uri\s*=\s*([^\n]+)', content)
-                    if match:
-                        mirror_url = match.group(1).strip()
-                        if mirror_url:
-                            self.print_success(f"Rsync-Mirror ausgewählt: {mirror_url}")
-                            return mirror_url
-            
+                # Je nach mirrorselect-Version: "sync-uri = rsync://..." oder SYNC="rsync://..."
+                match = re.search(r'(rsync://[^\s"]+)', result.stdout)
+                if match:
+                    mirror_url = match.group(1)
+                    self.print_success(f"Rsync-Mirror ausgewählt: {mirror_url}")
+                    return mirror_url
+                self.print_warning("mirrorselect hat keinen Rsync-Mirror zurückgegeben")
             elif result.returncode == 130:  # Ctrl+C
                 self.print_info("Rsync-Mirror-Auswahl abgebrochen")
-            
+            else:
+                self.print_warning(f"mirrorselect fehlgeschlagen (Code: {result.returncode})")
+
         except subprocess.TimeoutExpired:
             self.print_warning("mirrorselect Rsync-Auswahl Timeout")
         except Exception as e:
             self.print_warning(f"Fehler bei mirrorselect Rsync-Auswahl: {e}")
-        
+
         return None
-    
-    def configure_rsync_mirrors(self):
-        """Konfiguriert die deutschen RSYNC Mirror in repos.conf/gentoo.conf
-        
-        Setzt rsync.de.gentoo.org als primären Mirror mit deutschen Fallbacks
-        """
-        repos_conf_path = '/etc/portage/repos.conf/gentoo.conf'
-        
-        if not os.path.exists(repos_conf_path):
-            self.print_warning(f"repos.conf nicht gefunden: {repos_conf_path}")
-            return
-        
-        try:
-            with open(repos_conf_path, 'r') as f:
-                repos_conf_content = f.read()
-            
-            # Extrahiere aktuellen sync-uri
-            current_sync = None
-            pattern = r'sync-uri\s*=\s*([^\n]+)'
-            match = re.search(pattern, repos_conf_content)
-            if match:
-                current_sync = match.group(1).strip()
-            
-            # Baue neue Fallback-Liste (nur primär Mirror, rsync.de.gentoo.org)
-            # Portage übernimmt automatisch Fallbacks aus repos.conf wenn dieser Mirror ausfällt
-            primary_rsync_mirror = 'rsync://rsync.de.gentoo.org/gentoo-portage'
-            
-            # Ersetze sync-uri mit deutschem Primary Mirror
-            if 'sync-uri' in repos_conf_content:
-                # Ersetze existierende sync-uri
-                updated_content = re.sub(
-                    r'sync-uri\s*=\s*[^\n]+',
-                    f'sync-uri = {primary_rsync_mirror}',
-                    repos_conf_content
-                )
-            else:
-                # Füge neue Zeile am Ende des [gentoo] Block hinzu
-                updated_content = repos_conf_content.rstrip() + f'\nsync-uri = {primary_rsync_mirror}\n'
-            
-            if updated_content != repos_conf_content:
-                # Schreibe mit besseren Fehlerbehandlung
-                try:
-                    with open(repos_conf_path, 'w') as f:
-                        f.write(updated_content)
-                    self.print_success(f"repos.conf aktualisiert mit deutschem RSYNC Mirror (rsync.de.gentoo.org)")
-                    self.logger.info(f"Primärer RSYNC Mirror: {primary_rsync_mirror}")
-                    if current_sync:
-                        self.logger.info(f"Alter Mirror: {current_sync}")
-                except PermissionError as pe:
-                    self.print_warning(f"Keine Berechtigung, repos.conf zu schreiben (Root erforderlich): {pe}")
-                except IOError as ie:
-                    self.print_warning(f"IO-Fehler beim Schreiben von repos.conf: {ie}")
-            else:
-                self.logger.info(f"repos.conf ist bereits mit deutschem Mirror konfiguriert")
-        
-        except PermissionError as pe:
-            self.print_warning(f"Keine Berechtigung, repos.conf zu lesen: {pe}")
-        except Exception as e:
-            self.print_warning(f"Fehler bei repos.conf-Konfiguration: {e}")
-            self.logger.exception("Exception Details:")
-    
+
     def log_mirrors_info(self):
         """Loggt die tatsächlich verwendeten Gentoo Mirrors"""
         # Zeige Distfiles Mirror
         self.print_info(_('SYNC_MIRROR_INFO'))
-        
-        # Prüfe ob custom_mirrors oder defaults verwendet werden
-        if self.custom_mirrors and self.custom_mirrors == DEFAULT_GERMAN_MIRRORS_DISTFILES:
-            self.print_success(f"{symbol('germany')} Verwende deutsche Gentoo Mirrors als Standard!")
-        
-        # Gibt GENTOO_MIRRORS aus  
+
+        if self.german_mirrors:
+            self.print_success(f"{symbol('germany')} Verwende deutsche Gentoo Mirrors (--german-mirrors)")
+
+        # Gibt GENTOO_MIRRORS aus
         mirrors = self.get_gentoo_mirrors()
-        
+
         if mirrors:
             for i, mirror in enumerate(mirrors, 1):
                 print(f"  {i}. {mirror}")
@@ -1166,9 +1229,14 @@ class GentooUpdater:
             self.stats['used_mirror'] = mirrors[0]
             self.print_info(_('SYNC_PRIMARY_MIRROR', mirror=mirrors[0]))
         else:
-            self.print_warning(_('NO_MIRRORS'))
-            
-            
+            self.print_info(_('NO_MIRRORS'))
+
+        # Zeige Sync-Quelle des gentoo-Repositories
+        repo_config = self.get_gentoo_repo_config()
+        if repo_config.get('sync-uri'):
+            self.print_info(f"Portage-Tree Sync ({repo_config.get('sync-type', '?')}): {repo_config['sync-uri']}")
+
+
     def run_command(self, command: List[str], description: str, 
                     allow_fail: bool = False, capture_output: bool = False,
                     custom_env: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -1203,10 +1271,11 @@ class GentooUpdater:
                     command,
                     capture_output=True,
                     text=True,
-                    env=env
+                    env=env,
+                    timeout=self.timeout
                 )
                 output = result.stdout + result.stderr
-                
+
                 if result.returncode == 0:
                     self.print_success(f"{description} erfolgreich abgeschlossen")
                     return True, output
@@ -1225,15 +1294,31 @@ class GentooUpdater:
                     env=env
                 )
                 
+                # Timeout: Prozess wird nach self.timeout Sekunden beendet
+                timer = None
+                timed_out = threading.Event()
+                if self.timeout:
+                    def kill_on_timeout():
+                        timed_out.set()
+                        process.kill()
+                    timer = threading.Timer(self.timeout, kill_on_timeout)
+                    timer.start()
+
                 output_lines = []
-                # Echtzeit-Ausgabe
-                for line in process.stdout:
-                    print(line, end='')
-                    output_lines.append(line)
-                    
-                process.wait()
+                try:
+                    # Echtzeit-Ausgabe
+                    for line in process.stdout:
+                        print(line, end='')
+                        output_lines.append(line)
+                    process.wait()
+                finally:
+                    if timer:
+                        timer.cancel()
                 output = ''.join(output_lines)
-                
+
+                if timed_out.is_set():
+                    raise subprocess.TimeoutExpired(command, self.timeout, output=output)
+
                 if process.returncode == 0:
                     self.print_success(f"{description} erfolgreich abgeschlossen")
                     return True, output
@@ -1248,6 +1333,12 @@ class GentooUpdater:
             if not allow_fail:
                 sys.exit(1)
             return False, ""
+        except subprocess.TimeoutExpired as e:
+            self.print_error(f"{description} nach {self.timeout} Sekunden abgebrochen (--timeout)")
+            if not allow_fail:
+                sys.exit(1)
+            output = e.output if isinstance(e.output, str) else ""
+            return False, output
         except Exception as e:
             self.print_error(_('RUN_COMMAND_ERROR', desc=description, error=str(e)))
             self.logger.exception("Exception Details:")
@@ -1255,74 +1346,52 @@ class GentooUpdater:
                 sys.exit(1)
             return False, str(e)
             
-    def sync_repositories(self, retry: int = 1, mirror_index: int = 0) -> bool:
-        """Synchronisiert die Portage-Repositories mit Mirror-Fallback
-        
-        Args:
-            retry: Anzahl der Wiederholungsversuche bei Manifest-Fehler
-            mirror_index: Index des zu verwendenden German Mirror (0-2)
+    def apply_mirror_settings(self):
+        """Ändert Mirror-Einstellungen - nur wenn explizit per Option angefordert
+
+        - --use-mirrorselect: interaktive Auswahl (Distfiles + Rsync)
+        - --german-mirrors: eingebaute deutsche Distfile- und Rsync-Mirrors
+        - --mirrors / GENTOO_UPDATER_MIRRORS: eigene Distfile-Mirrors
+        Ohne diese Optionen bleiben make.conf und repos.conf unverändert.
         """
-        self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/2)")
-        
-        # Versuche erst, die schnellsten Mirror mit mirrorselect zu wählen (nur beim ersten Versuch)
-        # WICHTIG: -i öffnet UI nur wenn Terminal interaktiv ist, sonst automatisch fallback
-        best_mirrors_distfiles = None
-        best_mirror_rsync = None
-        
-        if retry == 1 and mirror_index == 0 and not self.custom_mirrors:
-            # Versuche Distfiles Mirror auszuwählen
+        distfile_mirrors = None
+        rsync_mirror = None
+
+        if self.use_mirrorselect:
             try:
-                best_mirrors_distfiles = self.auto_select_best_mirror_distfiles()
+                distfile_mirrors = self.auto_select_best_mirror_distfiles()
+                rsync_mirror = self.auto_select_best_mirror_rsync()
             except (EOFError, KeyboardInterrupt):
-                # Benutzer hat abgebrochen - verwende Standard
-                self.print_info("Verwende Standard-Mirror statt mirrorselect")
-            except Exception:
-                pass
-        
-        # Verwende beste Mirror wenn vorhanden, sonst Fallback
-        mirrors_to_use = None
-        if best_mirrors_distfiles:
-            mirrors_to_use = best_mirrors_distfiles
-            self.print_success(f"Verwende automatisch ausgewählte Mirror")
-        elif self.custom_mirrors:
-            mirrors_to_use = self.custom_mirrors
-        else:
-            mirrors_to_use = DEFAULT_GERMAN_MIRRORS_DISTFILES
-        
-        # Logge die konfigurierten Mirrors
+                self.print_info("mirrorselect abgebrochen - Mirror-Einstellungen bleiben unverändert")
+                return
+
+        if not distfile_mirrors and self.custom_mirrors:
+            distfile_mirrors = self.custom_mirrors
+        if not rsync_mirror and self.german_mirrors:
+            rsync_mirror = DEFAULT_GERMAN_MIRRORS_RSYNC[0]
+
+        if distfile_mirrors:
+            self.write_make_conf_mirrors(distfile_mirrors)
+        if rsync_mirror:
+            self.write_rsync_mirror(rsync_mirror)
+
+    def sync_repositories(self, retry: int = 1) -> bool:
+        """Synchronisiert die Portage-Repositories
+
+        Args:
+            retry: Aktueller Versuch (bei Fehler wird bis zu --retry-count mal wiederholt)
+        """
+        max_attempts = 1 + max(0, self.retry_count)
+        self.print_section(f"SCHRITT 1: Repository-Synchronisation (Versuch {retry}/{max_attempts})")
+
+        # Mirror-Änderungen nur beim ersten Versuch und nur bei expliziter Option
+        if retry == 1:
+            self.apply_mirror_settings()
+
+        # Logge die (ggf. gerade aktualisierten) Mirrors
         self.log_mirrors_info()
-        
-        # Aktualisiere make.conf mit Distfiles Mirror
-        make_conf_path = '/etc/portage/make.conf'
-        if mirrors_to_use and os.path.exists(make_conf_path):
-            try:
-                with open(make_conf_path, 'r') as f:
-                    make_conf_content = f.read()
-                
-                # Ersetze GENTOO_MIRRORS oder füge sie hinzu
-                mirrors_value = ' '.join(mirrors_to_use)
-                if 'GENTOO_MIRRORS=' in make_conf_content:
-                    # Ersetze existierende GENTOO_MIRRORS
-                    updated_content = re.sub(
-                        r'GENTOO_MIRRORS\s*=\s*"[^"]*"',
-                        f'GENTOO_MIRRORS="{mirrors_value}"',
-                        make_conf_content
-                    )
-                else:
-                    # Füge neue Zeile am Ende hinzu
-                    updated_content = make_conf_content.rstrip() + f'\n\n# Deutsche Gentoo Mirrors (Distfiles)\nGENTOO_MIRRORS="{mirrors_value}"\n'
-                
-                if updated_content != make_conf_content:
-                    with open(make_conf_path, 'w') as f:
-                        f.write(updated_content)
-                    self.print_success(f"make.conf aktualisiert mit deutschen Mirrors")
-            except Exception as e:
-                self.print_warning(f"Konnte make.conf nicht aktualisieren: {e}")
-        
-        # Aktualisiere repos.conf mit deutschem RSYNC Mirror
-        self.configure_rsync_mirrors()
-        
-        # Verwende Standard-Sync mit repos.conf (Portage-Tree über rsync)
+
+        # Verwende Standard-Sync mit repos.conf
         success, output = self.run_command(
             ["emerge", "--sync"],
             "Synchronisiere Portage-Repositories mit emerge --sync",
@@ -1330,14 +1399,14 @@ class GentooUpdater:
         )
         
         # Bei Fehler: Quarantine aufräumen und Retry
-        if not success and retry < 2:
+        if not success and retry < max_attempts:
             self.print_warning(_('SYNC_RETRY'))
             self.cleanup_manifest_quarantine()
-            
+
             # Warte kurz, bevor Retry
             time.sleep(2)
-            
-            return self.sync_repositories(retry=2, mirror_index=0)
+
+            return self.sync_repositories(retry=retry + 1)
         
         return success
         
@@ -1346,10 +1415,7 @@ class GentooUpdater:
         self.print_section("SCHRITT 2: eix-Datenbank aktualisieren")
         
         # Prüfe ob eix installiert ist
-        try:
-            subprocess.run(["which", "eix"], check=True, 
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError:
+        if not shutil.which("eix-update"):
             self.print_warning(_('EIX_NOT_INSTALLED'))
             return True
             
@@ -1363,19 +1429,21 @@ class GentooUpdater:
         """Prüft ob Updates verfügbar sind"""
         self.print_section("SCHRITT 3: Prüfe verfügbare Updates")
         
-        # Prüfe blockierte Pakete
-        auto_resolve = self.config.get('resolve_blocks', False)
-        if not self.check_blocked_packages(auto_resolve=auto_resolve):
-            sys.exit(1)
-        
         try:
-            result = subprocess.run(
-                ["emerge", "--update", "--deep", "--newuse", 
-                 "--pretend", "@world"],
-                capture_output=True,
-                text=True
-            )
-            
+            result = self.run_world_pretend()
+
+            # Prüfe blockierte Pakete
+            auto_resolve = self.config.get('resolve_blocks', False)
+            if not self.check_blocked_packages(result.stdout, auto_resolve=auto_resolve):
+                sys.exit(1)
+
+            if result.returncode != 0:
+                # Abhängigkeitsberechnung fehlgeschlagen (z.B. USE-Änderungen nötig).
+                # Das Update wird trotzdem versucht, damit autounmask-Recovery und Retries greifen.
+                print(result.stdout + result.stderr)
+                self.print_warning("emerge --pretend fehlgeschlagen - Update wird trotzdem versucht")
+                return True, result.stdout
+
             if "Total: 0 packages" in result.stdout:
                 self.print_success(_('NO_UPDATES'))
                 return False, ""
@@ -1397,21 +1465,18 @@ class GentooUpdater:
     
     def extract_package_list(self, output: str, operation: str):
         """Extrahiert Paket-Namen aus emerge-Output und markiert kritische Pakete"""
-        pattern = r'\[ebuild.*?\]\s+([^\s]+)'
-        packages = re.findall(pattern, output)
         critical_packages = self.config.get('critical_packages', [])
-        
+
         if operation == 'update':
+            packages = parse_emerge_packages(output)
             self.stats['packages_updated'].extend(packages)
             # Markiere kritische Pakete die aktualisiert werden
             for pkg in packages:
-                for crit_pkg in critical_packages:
-                    if crit_pkg in pkg:
-                        if not hasattr(self.stats, 'critical_packages_in_update'):
-                            self.stats['critical_packages_in_update'] = []
-                        self.stats['critical_packages_in_update'].append(pkg)
-                        break
+                if package_name(pkg) in critical_packages:
+                    self.stats.setdefault('critical_packages_in_update', []).append(pkg)
         elif operation == 'remove':
+            # depclean --pretend listet Pakete als "  cat/pkg" mit "selected:"-Zeile darunter
+            packages = re.findall(r'^[ \t]*([\w+.-]+/[\w+.-]+)[ \t]*\n[ \t]*selected:', output, re.MULTILINE)
             self.stats['packages_removed'].extend(packages)
 
     def detect_dependency_conflicts(self, output: str) -> List[Dict[str, str]]:
@@ -1503,11 +1568,21 @@ class GentooUpdater:
         ]
         return any(indicator in output_lower for indicator in indicators)
 
-    def apply_autounmask_and_update_configs(self, base_emerge_cmd: List[str]) -> bool:
-        """Führt autounmask-write aus und merged Konfigurationsänderungen automatisch"""
+    def run_autounmask_update(self, base_emerge_cmd: List[str]) -> Tuple[bool, str]:
+        """Wiederholt das Update mit autounmask und schreibt die Änderungen nach /etc/portage
+
+        Durch CONFIG_PROTECT_MASK=/etc/portage schreibt Portage die Änderungen direkt in
+        package.use, package.accept_keywords usw. statt ._cfg-Dateien anzulegen.
+        Dadurch ist kein globales etc-update nötig und Konfigurationsdateien außerhalb
+        von /etc/portage bleiben unangetastet.
+
+        Returns:
+            Tuple (success, output) des emerge-Laufs
+        """
         self.print_warning("Portage verlangt Konfigurations-/USE-Änderungen. Starte automatische Autounmask-Recovery...")
 
-        # 1) Änderungen automatisch schreiben lassen
+        # --autounmask-continue schreibt die Änderungen und setzt das Update direkt fort,
+        # ein separater Retry ist daher nicht nötig
         autounmask_flags = [
             "--autounmask=y",
             "--autounmask-write",
@@ -1516,37 +1591,19 @@ class GentooUpdater:
         ]
         autounmask_cmd = [base_emerge_cmd[0], *autounmask_flags, *base_emerge_cmd[1:]]
 
-        success, _ = self.run_command(
+        protect_mask = ' '.join(filter(None, [os.environ.get('CONFIG_PROTECT_MASK', ''), '/etc/portage']))
+
+        success, output = self.run_command(
             autounmask_cmd,
-            "Wende autounmask-Änderungen automatisch an",
-            allow_fail=True
+            "Aktualisiere System-Pakete mit automatischen autounmask-Änderungen",
+            allow_fail=True,
+            custom_env={'CONFIG_PROTECT_MASK': protect_mask}
         )
-        if not success:
-            self.print_warning("Autounmask-Änderungen konnten nicht automatisch geschrieben werden")
-            return False
-
-        # 2) Config-Merge durchführen (bevorzugt etc-update)
-        if shutil.which("etc-update"):
-            merge_cmd = ["etc-update", "--automode", "-3"]
-            merge_desc = "Übernehme Konfigurationsänderungen mit etc-update --automode -3"
-        elif shutil.which("dispatch-conf"):
-            merge_cmd = ["dispatch-conf", "--replace-unmodified"]
-            merge_desc = "Übernehme Konfigurationsänderungen mit dispatch-conf"
+        if success:
+            self.print_success("Autounmask-Recovery erfolgreich abgeschlossen (Änderungen in /etc/portage)")
         else:
-            self.print_warning("Weder etc-update noch dispatch-conf gefunden - automatische Recovery nicht möglich")
-            return False
-
-        success, _ = self.run_command(
-            merge_cmd,
-            merge_desc,
-            allow_fail=True
-        )
-        if not success:
-            self.print_warning("Konfigurations-Merge nach autounmask fehlgeschlagen")
-            return False
-
-        self.print_success("Autounmask-Recovery erfolgreich abgeschlossen")
-        return True
+            self.print_warning("Autounmask-Recovery fehlgeschlagen")
+        return success, output
             
     def update_system(self) -> Tuple[bool, bool]:
         """Aktualisiert das gesamte System
@@ -1559,17 +1616,13 @@ class GentooUpdater:
         # Prüfe welche Pakete aktualisiert werden (mit --pretend)
         self.print_info(_('MODULE_ANALYSIS'))
         try:
-            result = subprocess.run(
-                ["emerge", "--update", "--deep", "--newuse", 
-                 "--with-bdeps=y", "--pretend", "@world"],
-                capture_output=True,
-                text=True
-            )
-            kernel_updated = "sys-kernel/" in result.stdout and "-sources" in result.stdout
+            result = self.run_world_pretend()
+            kernel_updated = any(is_kernel_package(package_name(atom))
+                                 for atom in parse_emerge_packages(result.stdout))
             if kernel_updated:
                 self.print_warning(_('KERNEL_UPDATE_DETECTED'))
                 self.stats['kernel_updated'] = True
-        except:
+        except Exception:
             kernel_updated = False
         
         # Baue emerge-Befehl mit Performance-Optimierungen
@@ -1578,12 +1631,14 @@ class GentooUpdater:
         resolve_blocks = self.config.get('resolve_blocks', False)
         backtrack_level = self.config.get('backtrack_level', 20)
         
+        # --ask=n: ein --ask aus EMERGE_DEFAULT_OPTS würde sonst unsichtbar auf Eingabe warten
         emerge_cmd = [
-            "emerge", 
+            "emerge",
             "--update", "--deep", "--newuse",
             "--with-bdeps=y",
             f"--jobs={jobs}",
             f"--load-average={load_avg}",
+            "--ask=n",
         ]
         
         # Füge --backtrack hinzu, wenn blockierte Pakete automatisch gelöst werden sollen
@@ -1602,16 +1657,9 @@ class GentooUpdater:
             allow_fail=True
         )
 
-        # Wenn notwendige USE/Config-Änderungen fehlen: automatisch anwenden und einmal neu versuchen
+        # Wenn notwendige USE/Config-Änderungen fehlen: automatisch anwenden und Update fortsetzen
         if not success and self.auto_autounmask and self.requires_autounmask_recovery(output):
-            recovered = self.apply_autounmask_and_update_configs(emerge_cmd)
-            if recovered:
-                self.print_info("Starte emerge nach automatischer autounmask-Recovery erneut...")
-                success, output = self.run_command(
-                    emerge_cmd,
-                    "Aktualisiere System-Pakete (Retry nach autounmask)",
-                    allow_fail=True
-                )
+            success, output = self.run_autounmask_update(emerge_cmd)
         elif not success and self.requires_autounmask_recovery(output):
             self.print_warning("Autounmask-Recovery erkannt, aber deaktiviert (--no-auto-autounmask)")
         
@@ -1767,7 +1815,7 @@ class GentooUpdater:
         
         # Baue Module neu
         success, output = self.run_command(
-            ["emerge", "@module-rebuild"],
+            ["emerge", "--ask=n", "@module-rebuild"],
             "Kompiliere Kernel-Module neu",
             allow_fail=True
         )
@@ -1817,10 +1865,7 @@ class GentooUpdater:
         self.print_section("SCHRITT 7: Prüfe und repariere Abhängigkeiten")
         
         # Prüfe ob revdep-rebuild verfügbar ist
-        try:
-            subprocess.run(["which", "revdep-rebuild"], check=True,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError:
+        if not shutil.which("revdep-rebuild"):
             self.print_warning(_('REVDEP_NOT_FOUND'))
             return True
             
@@ -1948,8 +1993,10 @@ class GentooUpdater:
         """Aktualisiert Konfigurationsdateien basierend auf eingestelltem Modus
         
         Modi:
-        - interactive: Benutzer wird interaktiv gefragt (standard etc-update UI)
+        - interactive: Benutzer wird interaktiv gefragt (standard etc-update UI);
+          ohne Terminal (z.B. cron/systemd-Timer) wird wie 'skip' verfahren
         - auto: Alle Updates werden automatisch angewendet (etc-update --automode -3)
+          ACHTUNG: überschreibt auch eigene Anpassungen in /etc
         - skip: Keine Aktualisierung, nur Benachrichtigung
         """
         self.print_section("SCHRITT 9: Konfigurationsdateien aktualisieren")
@@ -1990,6 +2037,10 @@ class GentooUpdater:
                 self.print_warning("DRY-RUN: Würde interaktives etc-update starten")
                 return True
             
+            if not sys.stdin.isatty():
+                self.print_warning("Kein interaktives Terminal - etc-update wird übersprungen. Bitte später manuell ausführen.")
+                return True
+
             self.print_info("Modus: interactive - Starte interaktives etc-update")
             self.print_info("Drücke 'q' zum Beenden, '-' um eine Datei zu überspringen")
             
@@ -2088,8 +2139,47 @@ class GentooUpdater:
         except Exception as e:
             self.logger.warning(f"Konnte Summary nicht speichern: {e}")
     
+    def send_webhook(self, success: bool, duration):
+        """Sendet den Update-Status als JSON per HTTP POST an --notification-webhook"""
+        if not self.webhook_url:
+            return
+
+        if not self.webhook_url.startswith(('https://', 'http://')):
+            self.print_warning(f"Ungültige Webhook-URL (nur http/https): {self.webhook_url}")
+            return
+
+        payload = {
+            'host': socket.gethostname(),
+            'success': success,
+            'duration': str(duration),
+            'packages_updated': len(self.stats['packages_updated']),
+            'packages_removed': len(self.stats['packages_removed']),
+            'kernel_updated': self.stats['kernel_updated'],
+            'errors': self.stats['errors'],
+            'log_file': str(self.log_file),
+            'version': __version__
+        }
+
+        if self.dry_run:
+            self.print_warning(f"DRY-RUN: Würde Webhook senden an {self.webhook_url}")
+            return
+
+        try:
+            request = urllib.request.Request(
+                self.webhook_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urllib.request.urlopen(request, timeout=10) as response:  # nosec B310 - Schema oben geprüft
+                self.print_info(f"Webhook gesendet (HTTP {response.status})")
+        except Exception as e:
+            self.print_warning(f"Konnte Webhook nicht senden: {e}")
+
     def send_notification(self, success: bool, duration):
-        """Sendet Benachrichtigung über Update-Status"""
+        """Sendet Benachrichtigung über Update-Status (Webhook und/oder E-Mail)"""
+        self.send_webhook(success, duration)
+
         if not self.config.get('enable_notifications', False):
             return
         
@@ -2162,14 +2252,10 @@ Details siehe: {self.log_file}
         if self.retry_count > 1:
             print(f"{Colors.OKCYAN}{symbol('sync')} Retry-Count: {self.retry_count}{Colors.ENDC}")
         if self.max_packages:
-            print(f"{Colors.OKCYAN}{symbol('package')} Max Packages: {self.max_packages}{Colors.ENDC}")
+            print(f"{Colors.WARNING}{symbol('warning')} --max-packages ist veraltet und wird ignoriert{Colors.ENDC}")
         
-        # Prüfe ob mirrorselect verfügbar ist und informiere Benutzer
-        try:
-            subprocess.run(["which", "mirrorselect"], check=True,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
-            print(f"{Colors.OKCYAN}{_('MIRRORSELECT_AVAILABLE')}{Colors.ENDC}")
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        # mirrorselect wird nur mit --use-mirrorselect benötigt
+        if self.use_mirrorselect and not shutil.which("mirrorselect"):
             print(f"{Colors.WARNING}{_('MIRRORSELECT_NOT_INSTALLED')}{Colors.ENDC}")
             print(f"{Colors.OKCYAN}{_('MIRRORSELECT_INSTALL_TIP')}{Colors.ENDC}")
             print(f"{Colors.OKCYAN}{_('MIRRORSELECT_BENEFIT')}{Colors.ENDC}\n")
@@ -2190,7 +2276,7 @@ Details siehe: {self.log_file}
             # Schritt 1: Sync (wenn nicht übersprungen)
             if not self.skip_sync:
                 if not self.sync_repositories():
-                    self.print_error("Repository-Synchronisation fehlgeschlagen nach 2 Versuchen")
+                    self.print_error(_('SYNC_FAILED', attempts=1 + max(0, self.retry_count)))
                     update_success = False
                     sys.exit(1)
             else:
@@ -2208,19 +2294,19 @@ Details siehe: {self.log_file}
                 
                 if not has_updates and not self.dry_run:
                     self.update_config_files()
-                    end_time = datetime.now()
-                    duration = end_time - start_time
-                    self.print_summary(duration)
-                    self.send_notification(True, duration)
+                    # Summary und Benachrichtigung erfolgen im finally-Block
                     return
-                
-            # Schritt 4: System-Update
-            success, kernel_updated = self.update_system()
-            if not success:
-                self.print_error("System-Update fehlgeschlagen")
-                update_success = False
-                sys.exit(1)
-            
+
+                # Schritt 4: System-Update
+                success, kernel_updated = self.update_system()
+                if not success:
+                    self.print_error("System-Update fehlgeschlagen")
+                    update_success = False
+                    sys.exit(1)
+            else:
+                kernel_updated = False
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping system update (--skip-update){Colors.ENDC}")
+
             # Schritt 5: Kernel-Module neu bauen
             # Prüfe ob Module fehlen oder veraltet sind (auch ohne Update)
             needs_module_rebuild = kernel_updated or self.check_kernel_module_mismatch()
@@ -2230,11 +2316,17 @@ Details siehe: {self.log_file}
             else:
                 self.print_success("Kernel-Module sind aktuell - keine Neucompilierung nötig")
             
-            # Schritt 6: Depclean
-            self.depclean()
-            
-            # Schritt 7: revdep-rebuild
-            self.revdep_rebuild()
+            # Schritt 6: Depclean (wenn nicht übersprungen)
+            if not self.skip_cleanup:
+                self.depclean()
+            else:
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping depclean (--skip-cleanup){Colors.ENDC}")
+
+            # Schritt 7: revdep-rebuild (wenn nicht übersprungen)
+            if not self.skip_revdep:
+                self.revdep_rebuild()
+            else:
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping revdep-rebuild (--skip-revdep){Colors.ENDC}")
 
             # Schritt 7b: Python-Update Nachbehandlung
             self.handle_python_updates()
@@ -2284,30 +2376,38 @@ def main():
     # Environment-Variable Support
     env_dry_run = os.getenv('GENTOO_UPDATER_DRY_RUN', 'false').lower() == 'true'
     env_verbose = os.getenv('GENTOO_UPDATER_VERBOSE', 'false').lower() == 'true'
-    env_log_level = os.getenv('GENTOO_UPDATER_LOG_LEVEL', 'INFO')
+    # Ohne Default: nur gesetzte Variablen dürfen CLI-Parameter überschreiben
+    env_log_level = os.getenv('GENTOO_UPDATER_LOG_LEVEL')
     env_timeout = os.getenv('GENTOO_UPDATER_TIMEOUT')
-    env_retry = os.getenv('GENTOO_UPDATER_RETRY_COUNT', '1')
+    env_retry = os.getenv('GENTOO_UPDATER_RETRY_COUNT')
     env_webhook = os.getenv('GENTOO_UPDATER_WEBHOOK')
     env_parallel = os.getenv('GENTOO_UPDATER_PARALLEL_JOBS')
     env_auto_autounmask = os.getenv('GENTOO_UPDATER_AUTO_AUTOUNMASK')
     env_skip_internet_check = os.getenv('GENTOO_UPDATER_SKIP_INTERNET_CHECK', 'false').lower() == 'true'
     env_resolve_blocks = os.getenv('GENTOO_UPDATER_RESOLVE_BLOCKS', 'false').lower() == 'true'
-    env_backtrack = os.getenv('GENTOO_UPDATER_BACKTRACK', '20')
+    env_backtrack = os.getenv('GENTOO_UPDATER_BACKTRACK')
+    env_german_mirrors = os.getenv('GENTOO_UPDATER_GERMAN_MIRRORS', 'false').lower() == 'true'
     
     parser = argparse.ArgumentParser(
         description='Gentoo System Updater - Automatisiert System-Updates',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Beispiele:
-  sudo gentoo-updater                    # Vollständiges System-Update mit deutschen Mirrors
+  sudo gentoo-updater                    # Vollständiges System-Update
+  sudo gentoo-updater --german-mirrors   # Update und deutsche Mirrors setzen
   sudo gentoo-updater --dry-run          # Zeige was gemacht würde
   sudo gentoo-updater --only-sync        # Nur Repository-Sync
   sudo gentoo-updater --skip-cleanup     # Überspringe depclean
   GENTOO_UPDATER_DRY_RUN=true gentoo-updater  # Env-Var für Dry-Run
 
-Deutsche Mirrors:
-  Das Skript nutzt standardmäßig deutsche/europäische Mirrors für bessere Geschwindigkeit:
-  
+Mirrors:
+  Standardmäßig werden make.conf und repos.conf NICHT verändert.
+  Änderungen erfolgen nur mit --german-mirrors, --mirrors oder --use-mirrorselect.
+  Der Rsync-Mirror wird in /etc/portage/repos.conf/zz-gentoo-updater.conf gesetzt
+  (nur bei sync-type = rsync); zum Zurücksetzen die Datei löschen.
+
+  Deutsche/europäische Mirrors (--german-mirrors):
+
   Distfiles (Quellcode):
     - 🥇 RWTH Aachen (https://ftp.halifax.rwth-aachen.de/gentoo/) - sehr schnell
     - Init7 Schweiz (https://mirror.init7.net/gentoo/)
@@ -2315,17 +2415,20 @@ Deutsche Mirrors:
   
   Portage-Tree (RSYNC):
     - 🇩🇪 Deutschland (rsync://rsync.de.gentoo.org/gentoo-portage) - offiziell
-    - 🥇 RWTH Aachen (rsync://ftp.halifax.rwth-aachen.de/gentoo-portage) - sehr schnell
-    - 🇨🇭 Init7 Schweiz (rsync://mirror.init7.net/gentoo-portage)
-    - Official Gentoo (rsync://rsync.gentoo.org/gentoo-portage) - Fallback
-  
+
   Mit mirrorselect interaktiv auswählen:
     sudo emerge -av app-portage/mirrorselect  # Eine einzelne Installation
-    gentoo-updater wird mirrorselect automatisch starten wenn verfügbar!
-  
+    sudo gentoo-updater --use-mirrorselect
+
   Manuell konfigurieren:
     - Distfiles: /etc/portage/make.conf (GENTOO_MIRRORS)
     - Portage-Tree: /etc/portage/repos.conf/gentoo.conf (sync-uri)
+
+Konfigurationsdateien:
+  --etc-update-mode interactive (Standard) startet etc-update; ohne Terminal
+  (cron, systemd-Timer) wird übersprungen. --etc-update-mode auto übernimmt ALLE
+  neuen Versionen und überschreibt dabei eigene Anpassungen in /etc.
+  Die autounmask-Recovery schreibt nur nach /etc/portage.
 
 Umgebungsvariablen:
   GENTOO_UPDATER_DRY_RUN=true            # Aktiviere Dry-Run
@@ -2336,8 +2439,9 @@ Umgebungsvariablen:
   GENTOO_UPDATER_SKIP_INTERNET_CHECK=true # Überspringe Internetverbindungs-Prüfung
   GENTOO_UPDATER_WEBHOOK=URL             # Webhook-URL
   GENTOO_UPDATER_PARALLEL_JOBS=4         # Parallele Jobs
-    GENTOO_UPDATER_AUTO_AUTOUNMASK=true    # Automatische autounmask-Recovery
+  GENTOO_UPDATER_AUTO_AUTOUNMASK=true    # Automatische autounmask-Recovery
   GENTOO_UPDATER_MIRRORS=URL1,URL2       # Custom Mirror (komma-getrennt)
+  GENTOO_UPDATER_GERMAN_MIRRORS=true     # Deutsche Mirrors setzen
         """
     )
     
@@ -2432,7 +2536,11 @@ Umgebungsvariablen:
     parser.add_argument('--use-mirrorselect',
                        action='store_true',
                        help=get_help_text('use_mirrorselect'))
-    
+
+    parser.add_argument('--german-mirrors',
+                       action='store_true',
+                       help=get_help_text('german_mirrors'))
+
     parser.add_argument('--etc-update-mode',
                        choices=['interactive', 'auto', 'skip'],
                        default='interactive',
@@ -2531,24 +2639,31 @@ Umgebungsvariablen:
     if env_verbose:
         args.verbose = True
     if env_log_level:
-        args.log_level = env_log_level
-    if env_timeout:
-        args.timeout = int(env_timeout) if env_timeout else None
-    if env_retry:
-        args.retry_count = int(env_retry) if env_retry else 1
+        if env_log_level.upper() not in ['DEBUG', 'INFO', 'WARNING', 'ERROR']:
+            parser.error(f"GENTOO_UPDATER_LOG_LEVEL: ungültiger Wert '{env_log_level}'")
+        args.log_level = env_log_level.upper()
+    try:
+        if env_timeout:
+            args.timeout = int(env_timeout)
+        if env_retry:
+            args.retry_count = int(env_retry)
+        if env_parallel:
+            args.parallel_jobs = int(env_parallel)
+        if env_backtrack:
+            args.backtrack = int(env_backtrack)
+    except ValueError as e:
+        parser.error(f"Ungültige Zahl in Umgebungsvariable: {e}")
     if env_webhook:
         args.notification_webhook = env_webhook
-    if env_parallel:
-        args.parallel_jobs = int(env_parallel) if env_parallel else None
     if env_auto_autounmask is not None:
         args.auto_autounmask = env_auto_autounmask.lower() in ['1', 'true', 'yes', 'on']
     if env_skip_internet_check:
         args.skip_internet_check = True
     if env_resolve_blocks:
         args.resolve_blocks = True
-    if env_backtrack:
-        args.backtrack = int(env_backtrack) if env_backtrack else 20
-    
+    if env_german_mirrors:
+        args.german_mirrors = True
+
     # ===== KRITISCHE CHECKS: INTERNET-VERBINDUNG =====
     # Prüfe Internet-Verbindung, sofern nicht übersprungen
     skip_internet_check = getattr(args, 'skip_internet_check', False) or env_skip_internet_check
@@ -2560,18 +2675,17 @@ Umgebungsvariablen:
             sys.exit(1)
         print(f"{Colors.OKGREEN}{symbol('checkmark')} Internetverbindung verfügbar{Colors.ENDC}\n")
     
-    # Parse custom mirrors if provided (or use German mirrors as default)
+    # Distfile-Mirrors nur setzen, wenn explizit angefordert (sonst bleibt make.conf unverändert)
     custom_mirrors = None
     env_mirrors = os.getenv('GENTOO_UPDATER_MIRRORS')
-    
+
     if env_mirrors:
         # Umgebungsvariable überschreibt CLI
         custom_mirrors = [m.strip() for m in env_mirrors.split(',') if m.strip()]
     elif args.mirrors:
         # CLI Parameter
         custom_mirrors = [m.strip() for m in args.mirrors.split(',') if m.strip()]
-    else:
-        # Verwende deutsche Mirrors als Default
+    elif args.german_mirrors:
         custom_mirrors = DEFAULT_GERMAN_MIRRORS
     
     # Config erstellen wenn gewünscht
@@ -2579,7 +2693,13 @@ Umgebungsvariablen:
         config = Config(args.config)
         config.save_default_config()
         sys.exit(0)
-    
+
+    # Root-Prüfung vor dem Anlegen von /var/log/gentoo-updater (sonst PermissionError)
+    if os.geteuid() != 0:
+        print(f"{Colors.FAIL}[ERROR]{Colors.ENDC} {_('ROOT_ERROR')}")
+        print(f"{Colors.OKBLUE}[INFO]{Colors.ENDC} {_('ROOT_INFO')}")
+        sys.exit(1)
+
     try:
         config = Config(args.config)
         
@@ -2606,7 +2726,9 @@ Umgebungsvariablen:
             max_packages=args.max_packages,
             custom_mirrors=custom_mirrors,
             etc_update_mode=args.etc_update_mode,
-            auto_autounmask=args.auto_autounmask
+            auto_autounmask=args.auto_autounmask,
+            use_mirrorselect=args.use_mirrorselect,
+            german_mirrors=args.german_mirrors
         )
         
         # Nur Module neu gebaut werden sollen
@@ -2616,7 +2738,7 @@ Umgebungsvariablen:
         elif args.only_sync:
             updater.sync_repositories()
         elif args.only_update:
-            updater.update_world()
+            updater.update_system()
         elif args.only_cleanup:
             updater.depclean()
         # Spezifische Operationen überspringen (--skip-*)

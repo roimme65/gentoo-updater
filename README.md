@@ -44,9 +44,9 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 - 🎛️ **--log-level** (DEBUG/INFO/WARNING/ERROR)
 - ⏭️ **--skip-*** options (sync, update, eix, cleanup, revdep, internet-check)
 - 🎯 **--only-*** options (execute specific steps only)
-- 📦 **--max-packages N** (limit updates)
+- 📦 **--max-packages N** (deprecated, ignored)
 - ⏱️ **--timeout SECONDS** (set emerge timeout)
-- 🔄 **--retry-count N** (automatic retries on failure)
+- 🔄 **--retry-count N** (retries on sync failure)
 - 🛠️ **--auto-autounmask / --no-auto-autounmask** (toggle automatic autounmask recovery + retry)
 - 🔔 **--notification-webhook URL** (send notifications)
 - ⚙️ **--parallel-jobs N** (override job count)
@@ -151,19 +151,16 @@ sudo gentoo-updater --skip-internet-check
 sudo gentoo-updater --only-sync      # Only repository sync
 sudo gentoo-updater --only-update    # Only system update
 
-# Limit packages
-sudo gentoo-updater --max-packages 50
-
-# Set timeout
+# Set timeout per command
 sudo gentoo-updater --timeout 3600
 
-# Retry on failure
+# Retry sync up to 3 times on failure
 sudo gentoo-updater --retry-count 3
 
 # Override parallel jobs
 sudo gentoo-updater --parallel-jobs 8
 
-# Send webhook notification
+# Send webhook notification (JSON via POST)
 sudo gentoo-updater --notification-webhook "https://example.com/webhook"
 
 # Automatically resolve blocked packages with backtracking
@@ -289,9 +286,15 @@ After each update:
 - Total duration
 ## 🇩🇪 German Mirrors & Security
 
-### Automatic German Mirror Configuration
+### German Mirrors (optional)
 
-Gentoo Updater is now pre-configured with optimized German mirrors for maximum download speed:
+By default Gentoo Updater modifies **neither `make.conf` nor `repos.conf`** – the configured mirrors are only displayed.
+With `--german-mirrors` (or `GENTOO_UPDATER_GERMAN_MIRRORS=true`) the following German/European mirrors are set:
+
+- Distfiles: `GENTOO_MIRRORS` in `/etc/portage/make.conf` (backup: `make.conf.gentoo-updater.bak`)
+- Portage tree: separate file `/etc/portage/repos.conf/zz-gentoo-updater.conf` with `sync-uri = rsync://rsync.de.gentoo.org/gentoo-portage` – only if `sync-type = rsync`. Delete the file to revert.
+
+Custom distfile mirrors: `--mirrors URL1,URL2` or `GENTOO_UPDATER_MIRRORS`.
 
 **Distfiles (Source Code):**
 | Rank | Server | Location | Speed |
@@ -348,15 +351,14 @@ sync-uri = rsync://rsync.gentoo.org/gentoo-portage
 
 **Automatic Interactive Mirror Selection:**
 
-If `mirrorselect` is installed, Gentoo Updater can automatically select the best mirrors:
+With `--use-mirrorselect` Gentoo Updater runs the interactive `mirrorselect` selection and applies the result:
 
 ```bash
 # Installation (if not already installed)
 sudo emerge -a app-portage/mirrorselect
 
-# Gentoo Updater detects mirrorselect automatically
-sudo gentoo-updater
-# ✓ mirrorselect for German mirror selection available
+# Select and apply mirrors interactively
+sudo gentoo-updater --use-mirrorselect
 ```
 
 **Manual Mirror Selection:**
