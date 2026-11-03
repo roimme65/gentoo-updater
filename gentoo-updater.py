@@ -549,6 +549,7 @@ DEFAULT_GERMAN_MIRRORS_DISTFILES = [
     'https://ftp.halifax.rwth-aachen.de/gentoo/',           # 🥇 RWTH Aachen - sehr schnell
     'https://mirror.init7.net/gentoo/',                      # Init7 - Schweiz
     'http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/', # Ruhr-Uni Bochum
+    'https://distfiles.gentoo.org/',                         # Offizieller Ursprung - neue Dateien zuerst hier
 ]
 
 # Deutsche und europäische Gentoo Mirrors - RSYNC (Portage-Tree Sync)
@@ -592,6 +593,134 @@ def package_name(atom: str) -> str:
     return match.group(1) if match else atom
 
 
+# Download-/Checksum-Fehler von emerge (Distfile fehlt auf den Mirrors oder Upstream-Datei geändert)
+FETCH_FAILED_FILE_PATTERN = re.compile(r"^!!! Couldn't download '([^']+)'", re.MULTILINE)
+FETCH_VERIFY_FAILED_PATTERN = re.compile(r'^!!! Fetched file: (\S+) VERIFY FAILED', re.MULTILINE)
+FETCH_FAILED_PACKAGE_PATTERN = re.compile(r"^!!! Fetch failed for (\S+?),? ", re.MULTILINE)
+
+# Pakete, die beim Bauen/Installieren fehlgeschlagen sind
+# ">>> Failed to emerge cat/pkg-1.0, Log file:" bzw. mit --keep-going am Ende
+# " * (cat/pkg-1.0:0/0::gentoo, ebuild scheduled for merge), Log file:"
+FAILED_EMERGE_PATTERN = re.compile(r'^>>> Failed to emerge (\S+?),', re.MULTILINE)
+FAILED_SUMMARY_PATTERN = re.compile(r'^\s*\*\s+\(([^,\s]+), (?:ebuild|binary) scheduled for merge', re.MULTILINE)
+
+# emerge hat mit dem Bauen/Installieren begonnen (Abhängigkeitsberechnung war erfolgreich)
+MERGE_STARTED_PATTERN = re.compile(r'^>>> (?:Emerging|Installing|Verifying ebuild manifests)', re.MULTILINE)
+
+
+def strip_atom(atom: str) -> str:
+    """Entfernt Slot und Repository: 'cat/pkg-1.0:0/0::gentoo' -> 'cat/pkg-1.0'"""
+    return atom.split('::')[0].split(':')[0]
+
+
+def parse_fetch_failures(output: str) -> List[str]:
+    """Liefert die Distfiles, die nicht heruntergeladen/verifiziert werden konnten"""
+    files = FETCH_FAILED_FILE_PATTERN.findall(output or '') + FETCH_VERIFY_FAILED_PATTERN.findall(output or '')
+    return list(dict.fromkeys(files))
+
+
+def parse_failed_packages(output: str) -> List[str]:
+    """Liefert die Pakete (cat/pkg-version), die beim Fetch/Build/Install fehlgeschlagen sind"""
+    output = output or ''
+    atoms = (FAILED_EMERGE_PATTERN.findall(output) + FAILED_SUMMARY_PATTERN.findall(output)
+             + FETCH_FAILED_PACKAGE_PATTERN.findall(output))
+    return list(dict.fromkeys(strip_atom(a) for a in atoms))
+
+
+# Pfade zu Build-Logs in der emerge-Ausgabe, z.B. '/var/tmp/portage/cat/pkg-1.0/temp/build.log'
+BUILD_LOG_PATH_PATTERN = re.compile(r"'(/[^'\s]+/build\.log)'")
+ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+
+def find_build_log(atom: str, output: str) -> str:
+    """Ermittelt den build.log-Pfad eines Pakets (cat/pkg-version)
+
+    Bevorzugt den in der emerge-Ausgabe genannten Pfad, sonst
+    $PORTAGE_TMPDIR/portage/<cat>/<pf>/temp/build.log.
+    """
+    for path in BUILD_LOG_PATH_PATTERN.findall(output or ''):
+        if f'/{atom}/' in path:
+            return path
+    tmpdir = os.environ.get('PORTAGE_TMPDIR', '/var/tmp')
+    return os.path.join(tmpdir, 'portage', atom, 'temp', 'build.log')
+
+
+def read_log_tail(path: str, max_bytes: int = 64 * 1024) -> Optional[str]:
+    """Liest das Ende einer Logdatei ohne ANSI-Farbcodes, None wenn nicht lesbar"""
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - max_bytes))
+            text = f.read().decode('utf-8', errors='replace')
+    except OSError:
+        return None
+    return ANSI_ESCAPE_PATTERN.sub('', text)
+
+
+def merge_phase_started(output: str) -> bool:
+    """True, wenn emerge über die Abhängigkeitsberechnung hinausgekommen ist
+
+    Dann liegt der Fehler beim Download/Bauen/Installieren - mehr Backtracking hilft nicht.
+    """
+    output = output or ''
+    return bool(MERGE_STARTED_PATTERN.search(output) or parse_fetch_failures(output)
+                or parse_failed_packages(output))
+
+
+# Tatsächlich installierte Pakete
+# /var/log/emerge.log: "1730650340:  ::: completed emerge (1 of 17) cat/pkg-1.0 to /"
+EMERGE_LOG_PATH = '/var/log/emerge.log'
+EMERGE_LOG_COMPLETED_PATTERN = re.compile(r'^(\d+):\s+::: completed emerge \(\d+ of \d+\) (\S+) to ')
+# Terminal-Ausgabe (Fallback): ">>> Completed (1 of 17) cat/pkg-1.0::gentoo"
+EMERGE_COMPLETED_PATTERN = re.compile(r'^>>> Completed \(\d+ of \d+\) (\S+)', re.MULTILINE)
+
+
+def parse_completed_packages(output: str) -> List[str]:
+    """Liefert die laut emerge-Ausgabe fertig installierten Pakete (cat/pkg-version)"""
+    return [strip_atom(a) for a in EMERGE_COMPLETED_PATTERN.findall(output or '')]
+
+
+def read_emerge_log_completed(since: float, path: str = EMERGE_LOG_PATH) -> Optional[List[str]]:
+    """Liest die seit `since` (Unix-Zeit) installierten Pakete aus emerge.log
+
+    Returns:
+        Liste der Pakete oder None, wenn emerge.log nicht lesbar ist
+    """
+    try:
+        with open(path, 'r', errors='replace') as f:
+            # Nur das Ende lesen - emerge.log kann sehr groß werden
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 4 * 1024 * 1024))
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+
+    packages = []
+    for line in lines:
+        match = EMERGE_LOG_COMPLETED_PATTERN.match(line)
+        if match and int(match.group(1)) >= int(since):
+            packages.append(strip_atom(match.group(2)))
+    return packages
+
+
+# Distribution-Kernel werden über emerge gebaut/installiert (kein manuelles make nötig)
+DIST_KERNEL_PACKAGES = ('sys-kernel/gentoo-kernel-bin', 'sys-kernel/gentoo-kernel', 'sys-kernel/vanilla-kernel')
+VDB_PATH = '/var/db/pkg'
+
+
+def installed_dist_kernels(vdb: str = VDB_PATH) -> List[str]:
+    """Liefert die installierten Distribution-Kernel-Pakete (cat/pkg-version)"""
+    found = []
+    for name in DIST_KERNEL_PACKAGES:
+        category, pkg = name.split('/')
+        try:
+            entries = os.listdir(os.path.join(vdb, category))
+        except OSError:
+            continue
+        found += [f"{category}/{e}" for e in sorted(entries) if package_name(f"{category}/{e}") == name]
+    return found
+
+
 def is_kernel_package(name: str) -> bool:
     """Prüft, ob ein Paketname (ohne Version) ein Kernel-Paket ist"""
     return name in KERNEL_PACKAGES or (name.startswith('sys-kernel/') and name.endswith('-sources'))
@@ -608,6 +737,16 @@ class Colors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+def print_banner(title: str):
+    """Gibt einen umrandeten, zentrierten Titel aus (Rahmen 70 Zeichen breit)"""
+    inner = 66
+    print(f"{Colors.BOLD}{Colors.OKCYAN}")
+    print("╔" + "═" * (inner + 2) + "╗")
+    print(f"║ {title:^{inner}} ║")
+    print("╚" + "═" * (inner + 2) + "╝")
+    print(f"{Colors.ENDC}")
 
 
 def check_internet_connection() -> bool:
@@ -749,6 +888,10 @@ class GentooUpdater:
         # Zwischengespeichertes Ergebnis von emerge --pretend @world (siehe run_world_pretend)
         self.pretend_result = None
 
+        # Startzeit für die Auswertung von emerge.log und per Ausgabe erkannte Installationen
+        self.start_timestamp = time.time()
+        self.completed_from_output: List[str] = []
+
         # Logging einrichten
         self.log_dir = Path('/var/log/gentoo-updater')
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -758,7 +901,9 @@ class GentooUpdater:
         
         # Statistiken für Summary
         self.stats = {
-            'packages_updated': [],
+            'packages_updated': [],    # tatsächlich installiert (siehe collect_installed_packages)
+            'packages_planned': [],    # laut emerge --pretend geplant
+            'failed_packages': [],
             'packages_removed': [],
             'critical_packages': [],
             'kernel_updated': False,
@@ -1315,6 +1460,8 @@ class GentooUpdater:
                     if timer:
                         timer.cancel()
                 output = ''.join(output_lines)
+                if command and command[0] == 'emerge':
+                    self.completed_from_output.extend(parse_completed_packages(output))
 
                 if timed_out.is_set():
                     raise subprocess.TimeoutExpired(command, self.timeout, output=output)
@@ -1469,7 +1616,7 @@ class GentooUpdater:
 
         if operation == 'update':
             packages = parse_emerge_packages(output)
-            self.stats['packages_updated'].extend(packages)
+            self.stats['packages_planned'].extend(packages)
             # Markiere kritische Pakete die aktualisiert werden
             for pkg in packages:
                 if package_name(pkg) in critical_packages:
@@ -1632,12 +1779,15 @@ class GentooUpdater:
         backtrack_level = self.config.get('backtrack_level', 20)
         
         # --ask=n: ein --ask aus EMERGE_DEFAULT_OPTS würde sonst unsichtbar auf Eingabe warten
+        # --keep-going=y: ein einzelnes fehlgeschlagenes Paket (z.B. Download-Fehler)
+        # hält nicht alle anderen Updates auf
         emerge_cmd = [
             "emerge",
             "--update", "--deep", "--newuse",
             "--with-bdeps=y",
             f"--jobs={jobs}",
             f"--load-average={load_avg}",
+            "--keep-going=y",
             "--ask=n",
         ]
         
@@ -1663,7 +1813,12 @@ class GentooUpdater:
         elif not success and self.requires_autounmask_recovery(output):
             self.print_warning("Autounmask-Recovery erkannt, aber deaktiviert (--no-auto-autounmask)")
         
-        # Handhabe Dependency-Konflikte und ignorierte Binary-Packages
+        # Fehler beim Download/Bauen/Installieren: Backtrack-Retries ändern daran nichts
+        if not success and merge_phase_started(output):
+            self.report_merge_failures(output)
+            return success, kernel_updated
+
+        # Abhängigkeitsberechnung fehlgeschlagen: Dependency-Konflikte und ignorierte Binary-Packages
         if not success:
             conflicts = self.detect_dependency_conflicts(output)
             ignored_binpkgs = self.detect_ignored_binary_packages(output)
@@ -1718,6 +1873,7 @@ class GentooUpdater:
                     f"--load-average={load_avg}",
                     "--backtrack=50",
                     "--binpkg-respect-use=n",
+                    "--keep-going=y",
                     "--ask=n",
                     "@world"
                 ]
@@ -1726,9 +1882,73 @@ class GentooUpdater:
                     "Aktualisiere System-Pakete (Finale Retry mit Maximum-Optionen)",
                     allow_fail=True
                 )
+
+            if not success and merge_phase_started(output):
+                self.report_merge_failures(output)
         
         return success, kernel_updated
-        
+
+    def report_merge_failures(self, output: str):
+        """Meldet fehlgeschlagene Downloads/Builds verständlich und gibt Lösungshinweise
+
+        Bei parallelen Jobs schreibt emerge die Fehlerdetails nur in die Build-Logs,
+        daher wird für jedes fehlgeschlagene Paket dessen build.log ausgewertet.
+        """
+        failed_packages = parse_failed_packages(output)
+        failed_files = parse_fetch_failures(output)
+        details = {}
+
+        for atom in failed_packages:
+            log_path = find_build_log(atom, output)
+            log_text = read_log_tail(log_path)
+            if log_text is None:
+                details[atom] = {'reason': 'unknown', 'log': log_path}
+                continue
+            files = parse_fetch_failures(log_text)
+            if files:
+                details[atom] = {'reason': 'fetch', 'log': log_path, 'files': files}
+                failed_files.extend(files)
+            else:
+                tail = [line for line in log_text.splitlines() if line.strip()][-10:]
+                details[atom] = {'reason': 'build', 'log': log_path, 'tail': tail}
+
+        failed_files = list(dict.fromkeys(failed_files))
+        self.stats['failed_packages'] = failed_packages
+        self.stats['failed_distfiles'] = failed_files
+        self.stats['failed_details'] = details
+
+        if failed_files:
+            self.print_error(f"Download fehlgeschlagen ({len(failed_files)} Datei(en)): {', '.join(failed_files)}")
+            self.print_info("Ursache: Die Datei ist noch nicht auf den Mirrors oder die Upstream-Datei "
+                            "hat sich geändert (Checksumme passt nicht zum Manifest). "
+                            "Das ist ein Gentoo-seitiges Problem und behebt sich meist innerhalb weniger Stunden.")
+            mirrors = self.get_gentoo_mirrors()
+            if mirrors and not any('distfiles.gentoo.org' in m for m in mirrors):
+                self.print_info("Tipp: https://distfiles.gentoo.org/ als letzten Eintrag in GENTOO_MIRRORS "
+                                "ergänzen - neue Dateien liegen dort zuerst (oder --german-mirrors erneut ausführen)")
+
+        if failed_packages:
+            self.print_error(f"Fehlgeschlagene Pakete ({len(failed_packages)}): {', '.join(failed_packages)}")
+            for atom, info in details.items():
+                if info['reason'] == 'fetch':
+                    self.print_info(f"  {atom}: Download-/Checksum-Fehler ({', '.join(info['files'])})")
+                elif info['reason'] == 'build':
+                    self.print_info(f"  {atom}: Build-/Installationsfehler - Log: {info['log']}")
+                    for line in info['tail']:
+                        print(f"      {line}")
+                else:
+                    self.print_info(f"  {atom}: Ursache unbekannt (Build-Log nicht lesbar: {info['log']})")
+            excludes = ' '.join(f"--exclude {package_name(a)}" for a in failed_packages)
+            self.print_info("Pakete, die nicht davon abhängen, wurden trotzdem installiert (--keep-going). "
+                            "Später erneut ausführen oder die betroffenen Pakete vorübergehend ausschließen:")
+            print(f"  sudo emerge -uDN --with-bdeps=y {excludes} @world")
+        elif not failed_files:
+            self.print_info("emerge ist beim Bauen/Installieren fehlgeschlagen - Details im Build-Log (siehe oben)")
+
+        skipped_updates = self.detect_skipped_updates(output)
+        if skipped_updates:
+            self.print_warning(f"Unabhängig davon übersprungen wegen Abhängigkeitskonflikt: {', '.join(skipped_updates[:5])}")
+
     def check_kernel_module_mismatch(self) -> bool:
         """Prüft, ob Kernel-Module für den aktuellen Kernel fehlen oder veraltet sind
         
@@ -1952,7 +2172,14 @@ class GentooUpdater:
             
             self.print_info("Verfügbare Kernel:")
             print(result.stdout)
-            
+
+            # Distribution-Kernel werden mit dem System-Update aktualisiert
+            dist_kernels = installed_dist_kernels()
+            if dist_kernels:
+                self.print_success(f"Distribution-Kernel ({', '.join(dist_kernels)}) wird mit dem "
+                                   f"System-Update über emerge aktualisiert - kein manueller Kernel-Bau nötig")
+                return
+
             # Hinweis für manuelles Update
             self.print_warning(_('KERNEL_LIST_INFO'))
             self.print_info(_('KERNEL_UPDATE_STEPS'))
@@ -2072,14 +2299,8 @@ class GentooUpdater:
                 print(f"{Colors.BOLD}Primärer Mirror:{Colors.ENDC} {self.stats['used_mirror']}")
             print()
         
-        if self.stats['packages_updated']:
-            print(f"{Colors.OKGREEN}Aktualisierte Pakete ({len(self.stats['packages_updated'])}):{Colors.ENDC}")
-            for pkg in self.stats['packages_updated'][:10]:  # Zeige erste 10
-                print(f"  • {pkg}")
-            if len(self.stats['packages_updated']) > 10:
-                print(f"  ... und {len(self.stats['packages_updated']) - 10} weitere")
-            print()
-        
+        self.print_package_summary()
+
         if self.stats['packages_removed']:
             print(f"{Colors.OKCYAN}Entfernte Pakete ({len(self.stats['packages_removed'])}):{Colors.ENDC}")
             for pkg in self.stats['packages_removed'][:5]:
@@ -2121,6 +2342,67 @@ class GentooUpdater:
         # Speichere Summary auch in JSON
         self.save_summary_json(duration)
     
+    def collect_installed_packages(self) -> bool:
+        """Ermittelt die tatsächlich installierten Pakete und speichert sie in stats
+
+        Quelle ist /var/log/emerge.log (ab Start des Updaters), sonst die
+        ">>> Completed"-Zeilen der emerge-Ausgabe.
+
+        Returns:
+            True, wenn der Installationsstatus zuverlässig ermittelt werden konnte
+        """
+        from_log = None if self.dry_run else read_emerge_log_completed(self.start_timestamp)
+        installed = from_log if from_log is not None else self.completed_from_output
+        self.stats['packages_updated'] = list(dict.fromkeys(installed))
+        return from_log is not None or bool(self.completed_from_output)
+
+    def print_package_summary(self):
+        """Gibt installierte, fehlgeschlagene und nicht installierte Pakete vollständig aus"""
+        planned = list(dict.fromkeys(strip_atom(a) for a in self.stats.get('packages_planned', [])))
+
+        if self.dry_run:
+            if planned:
+                print(f"{Colors.OKCYAN}Geplante Pakete - Dry-Run ({len(planned)}):{Colors.ENDC}")
+                for pkg in planned:
+                    print(f"  • {pkg}")
+                print()
+            return
+
+        tracked = self.collect_installed_packages()
+        installed = self.stats['packages_updated']
+        failed = self.stats.get('failed_packages', [])
+
+        if installed:
+            print(f"{Colors.OKGREEN}Installierte Pakete ({len(installed)}):{Colors.ENDC}")
+            for pkg in installed:
+                print(f"  • {pkg}")
+            print()
+
+        if failed:
+            print(f"{Colors.FAIL}Fehlgeschlagene Pakete ({len(failed)}):{Colors.ENDC}")
+            for pkg in failed:
+                print(f"  {symbol('error')} {pkg}")
+            print()
+
+        if not tracked:
+            # Installationsstatus unbekannt (emerge.log nicht lesbar, keine Completed-Zeilen)
+            if planned:
+                print(f"{Colors.WARNING}Geplante Pakete - Installationsstatus unbekannt ({len(planned)}):{Colors.ENDC}")
+                for pkg in planned:
+                    print(f"  • {pkg}")
+                print()
+            return
+
+        # Vergleich über den Paketnamen (Binärpakete haben ggf. eine Build-ID im Atom)
+        done = {package_name(a) for a in installed} | {package_name(a) for a in failed}
+        not_installed = [a for a in planned if package_name(a) not in done]
+        self.stats['packages_not_installed'] = not_installed
+        if not_installed:
+            print(f"{Colors.WARNING}Geplant, aber nicht installiert ({len(not_installed)}):{Colors.ENDC}")
+            for pkg in not_installed:
+                print(f"  • {pkg}")
+            print()
+
     def save_summary_json(self, duration):
         """Speichert Update-Summary als JSON"""
         summary = {
@@ -2153,6 +2435,7 @@ class GentooUpdater:
             'success': success,
             'duration': str(duration),
             'packages_updated': len(self.stats['packages_updated']),
+            'packages_failed': len(self.stats.get('failed_packages', [])),
             'packages_removed': len(self.stats['packages_removed']),
             'kernel_updated': self.stats['kernel_updated'],
             'errors': self.stats['errors'],
@@ -2192,7 +2475,8 @@ class GentooUpdater:
         
         body = f"""Update-Status: {status}
 Dauer: {duration}
-Pakete aktualisiert: {len(self.stats['packages_updated'])}
+Pakete installiert: {len(self.stats['packages_updated'])}
+Pakete fehlgeschlagen: {len(self.stats.get('failed_packages', []))}
 Fehler: {len(self.stats['errors'])}
 
 Details siehe: {self.log_file}
@@ -2213,11 +2497,7 @@ Details siehe: {self.log_file}
         """Baut nur Kernel-Module neu (ohne System-Update)"""
         start_time = datetime.now()
         
-        print(f"{Colors.BOLD}{Colors.OKCYAN}")
-        print("╔════════════════════════════════════════════════════════════════════╗")
-        print("║       KERNEL-MODULE NEU KOMPILIEREN                              ║")
-        print("╚════════════════════════════════════════════════════════════════════╝")
-        print(f"{Colors.ENDC}")
+        print_banner("KERNEL-MODULE NEU KOMPILIEREN")
         
         self.check_root_privileges()
         
@@ -2239,13 +2519,9 @@ Details siehe: {self.log_file}
         """Führt ein komplettes System-Update durch"""
         start_time = datetime.now()
         update_success = True
+        partial_update = False
         
-        print(f"{Colors.BOLD}{Colors.OKCYAN}")
-        print("╔════════════════════════════════════════════════════════════════════╗")
-        version_text = f"GENTOO SYSTEM UPDATER v{__version__}"
-        print(f"║ {version_text:^64} ║")
-        print("╚════════════════════════════════════════════════════════════════════╝")
-        print(f"{Colors.ENDC}")
+        print_banner(f"GENTOO SYSTEM UPDATER v{__version__}")
         
         if self.timeout:
             print(f"{Colors.OKCYAN}{symbol('clock')} Timeout: {self.timeout} Sekunden{Colors.ENDC}")
@@ -2299,7 +2575,18 @@ Details siehe: {self.log_file}
 
                 # Schritt 4: System-Update
                 success, kernel_updated = self.update_system()
-                if not success:
+                failed_packages = self.stats.get('failed_packages', [])
+                if not success and failed_packages:
+                    # Teil-Update (--keep-going): die übrigen Pakete sind installiert,
+                    # Nacharbeiten laufen trotzdem, depclean wird ausgelassen
+                    self.print_error(f"System-Update unvollständig - {len(failed_packages)} Paket(e) fehlgeschlagen")
+                    self.print_warning("Führe Nacharbeiten trotzdem aus (ohne depclean)")
+                    update_success = False
+                    partial_update = True
+                    if any(is_kernel_package(package_name(a)) for a in failed_packages):
+                        kernel_updated = False
+                        self.stats['kernel_updated'] = False
+                elif not success:
                     self.print_error("System-Update fehlgeschlagen")
                     update_success = False
                     sys.exit(1)
@@ -2311,13 +2598,15 @@ Details siehe: {self.log_file}
             # Prüfe ob Module fehlen oder veraltet sind (auch ohne Update)
             needs_module_rebuild = kernel_updated or self.check_kernel_module_mismatch()
             
+            # (ohne Rebuild meldet check_kernel_module_mismatch() den Status bereits)
             if needs_module_rebuild:
                 self.rebuild_kernel_modules(force=kernel_updated)
-            else:
-                self.print_success("Kernel-Module sind aktuell - keine Neucompilierung nötig")
             
-            # Schritt 6: Depclean (wenn nicht übersprungen)
-            if not self.skip_cleanup:
+            # Schritt 6: Depclean (wenn nicht übersprungen; nicht nach einem Teil-Update,
+            # da noch benötigte Pakete sonst als verwaist gelten könnten)
+            if partial_update:
+                self.print_warning("depclean übersprungen, da das System-Update unvollständig ist")
+            elif not self.skip_cleanup:
                 self.depclean()
             else:
                 print(f"{Colors.WARNING}{symbol('skip')} Skipping depclean (--skip-cleanup){Colors.ENDC}")
@@ -2336,6 +2625,10 @@ Details siehe: {self.log_file}
             
             # Schritt 9: Config-Update (interaktiv, automatisch oder übersprungen)
             self.update_config_files()
+
+            # Teil-Update: nach den Nacharbeiten mit Fehlercode beenden (cron/Webhook)
+            if partial_update:
+                sys.exit(1)
             
         except KeyboardInterrupt:
             self.print_error("Update durch Benutzer abgebrochen")
@@ -2412,6 +2705,7 @@ Mirrors:
     - 🥇 RWTH Aachen (https://ftp.halifax.rwth-aachen.de/gentoo/) - sehr schnell
     - Init7 Schweiz (https://mirror.init7.net/gentoo/)
     - Ruhr-Universität Bochum (http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/)
+    - Fallback: distfiles.gentoo.org (https://distfiles.gentoo.org/) - offizieller Ursprung
   
   Portage-Tree (RSYNC):
     - 🇩🇪 Deutschland (rsync://rsync.de.gentoo.org/gentoo-portage) - offiziell
