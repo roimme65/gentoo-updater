@@ -302,6 +302,7 @@ Custom distfile mirrors: `--mirrors URL1,URL2` or `GENTOO_UPDATER_MIRRORS`.
 | 🥇 | RWTH Aachen (ftp.halifax.rwth-aachen.de) | Aachen, Germany | ⚡⚡⚡ Very Fast |
 | 🥈 | Init7 (mirror.init7.net) | Switzerland | ⚡⚡ Fast |
 | 🥉 | Ruhr University Bochum | Bochum, Germany | ⚡ Stable |
+| 🔄 | distfiles.gentoo.org (fallback, official origin – new files appear here first) | – | – |
 
 **Portage Repository (Rsync):**
 - 🔄 Fallback: rsync.gentoo.org (Official)

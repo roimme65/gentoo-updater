@@ -296,6 +296,7 @@ Eigene Distfile-Mirrors: `--mirrors URL1,URL2` bzw. `GENTOO_UPDATER_MIRRORS`.
 | 🥇 | RWTH Aachen (ftp.halifax.rwth-aachen.de) | Aachen, Germany | ⚡⚡⚡ Sehr schnell |
 | 🥈 | Init7 (mirror.init7.net) | Schweiz | ⚡⚡ Schnell |
 | 🥉 | Ruhr-Universität Bochum | Bochum, Germany | ⚡ Stabil |
+| 🔄 | distfiles.gentoo.org (Fallback, offizieller Ursprung – neue Dateien zuerst hier) | – | – |
 
 **Portage-Repository (Rsync):**
 - 🔄 Fallback: rsync.gentoo.org (Official)
@@ -334,7 +335,7 @@ Detailliertes Sicherheits-Audit des gentoo-updater Quellcodes:
 ```bash
 # make.conf - Distfiles Mirror
 nano /etc/portage/make.conf
-GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ https://mirror.init7.net/gentoo/ http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/"
+GENTOO_MIRRORS="https://ftp.halifax.rwth-aachen.de/gentoo/ https://mirror.init7.net/gentoo/ http://linux.rz.ruhr-uni-bochum.de/download/gentoo-mirror/ https://distfiles.gentoo.org/"
 
 # repos.conf - Portage-Tree Mirror
 nano /etc/portage/repos.conf/gentoo.conf
