@@ -1,4 +1,4 @@
-## Unreleased
+## v2.1.0 (2026-11-03)
 - Fix: Download-/Checksum-Fehler (`Couldn't download`, `VERIFY FAILED`) lösen keine sinnlosen Backtrack-Retries mehr aus; stattdessen klare Meldung mit Datei, betroffenen Paketen und `--exclude`-Befehl
 - Backtrack-/`--binpkg-respect-use=n`-Retries nur noch, wenn die Abhängigkeitsberechnung fehlschlägt (nicht wegen der Warnung über übersprungene Updates)
 - `emerge --keep-going=y`: ein fehlgeschlagenes Paket hält die übrigen Updates nicht mehr auf
