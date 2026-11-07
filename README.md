@@ -22,7 +22,7 @@ Automated update solution for Gentoo Linux that simplifies and automates the ent
 
 ### 🛡️ Security & Reliability
 - 💾 **Automatic Backups** of important configuration files
-- 🔍 **Blocked Packages Check** before updates
+- 🔍 **Blocked Packages Check** before updates, with suggestions for missing USE flags (`package.use`)
 - ⚠️ **Critical Package Warning** (gcc, glibc, Python)
 - 🌐 **Internet Connection Check** (automatic, before starting updates)
 - 📝 **Full Logging System** with JSON export
@@ -236,6 +236,10 @@ The script automatically executes these steps:
 3. **Update Check**
    - Checks for available updates
    - Shows list of packages to update
+   - On blocked packages or slot conflicts: looks for USE flags a package requires but
+     that are not set, and suggests the matching `package.use` line
+     (e.g. `dev-qt/qttools designer` when `dev-python/pyside[tools]` needs it).
+     The updater does not modify `package.use` itself.
 
 4. **System Update**
    - Runs `emerge @world --update --deep --newuse`
@@ -391,6 +395,21 @@ If problems persist:
 sudo rm -rf /var/db/repos/gentoo/.tmp-unverified-download-quarantine
 sudo emerge --sync
 ```
+
+### Blocked packages / slot conflict after a version bump
+
+A typical case: a new package version requires an additional USE flag on a dependency.
+Portage then keeps the old version and reports `[blocks B]` entries or a slot conflict.
+The updater detects this and prints a suggestion, for example:
+
+```
+[WARNING] Cause found: required USE flags are not set:
+[WARNING]   dev-qt/qttools designer   (required by dev-python/pyside-6.11.3)
+    echo "dev-qt/qttools designer" >> /etc/portage/package.use/qttools
+```
+
+Apply the line as root and run the updater again. If no suggestion is shown, the conflict has a
+different cause; try `--resolve-blocks --backtrack 50` or resolve it manually.
 
 ### Missing kernel modules after kernel update
 
