@@ -1,693 +1,178 @@
 # 🔒 Security Scan Report - gentoo-updater
 
-**Scan Date:** 2026-02-15  
-**Repository:** `gentoo-updater` (Public)  
-**Status:** ✅ **SAFE FOR PRODUCTION**
+**Scan Date:** 2026-11-07
+**Version scanned:** v2.1.0 + unreleased changes (USE flag suggestions for blocked packages)
+**Repository:** `gentoo-updater` (Public)
+**Status:** ✅ **No high-severity issues** – R1–R3 fixed, 1 low-risk recommendation open (R4)
 
 ---
 
-## ✅ PASSED SECURITY CHECKS
-
-### 1. Secrets & Credentials
-
-• ✓ No hardcoded API keys, tokens, or passwords found
-• ✓ No private credentials in source code
-• ✓ Configuration files (.conf) use environment variables for sensitive data
-• ✓ Logging system explicitly excludes sensitive information
-• ✓ Email notifications use only user-provided addresses (no hardcoding)
-
-**Evidence:**
-- Configuration example: `gentoo-updater.conf.example` (no secrets)
-- Logging implementation uses dedicated filtering for sensitive data
-- All external tools (emerge, eix, eselect) communicate via standard I/O
-
----
-
-### 2. Code Execution Safety
-
-• ✓ No `eval()`, `exec()`, or `compile()` found
-• ✓ No `os.system()` with unsanitized input
-• ✓ All subprocess calls use argument arrays (safe pattern)
-• ✓ No dynamic command construction from user input
-• ✓ Shell execution explicitly disabled (`shell=False` - default)
-
-**Evidence:**
-```python
-# SAFE: Using argument arrays (no shell injection)
-result = subprocess.run(
-    ["emerge", "--update", "--deep", "--newuse", "--pretend", "@world"],
-    capture_output=True,
-    text=True
-)
-```
-
-All 46 subprocess calls follow this pattern - system binaries only, no user input injection.
-
----
-
-### 3. Dependency Safety
-
-• ✓ Only Python standard library used
-• ✓ No external package dependencies
-• ✓ Minimal attack surface
-• ✓ Modules used: `subprocess`, `sys`, `os`, `argparse`, `shutil`, `time`, `json`, `re`, `locale`, `pathlib`, `datetime`, `logging`, `typing`
-
-**Rationale for Standard Library Only:**
-- Reduces supply chain attack risk
-- No external package vulnerabilities possible
-- Easier to audit and maintain
-- Pure Python implementation for portability
-
----
-
-### 4. Input Validation
-
-• ✓ Command-line arguments validated via argparse
-• ✓ Configuration file parsing with type checking
-• ✓ Email addresses validated before use
-• ✓ Timeouts enforced on all subprocess calls
-• ✓ Package names come from emerge only (system-provided)
-
-**Evidence:**
-```python
-parser.add_argument('--timeout', type=int, default=3600, help='Emerge timeout')
-parser.add_argument('--max-packages', type=int, help='Maximum packages to update')
-parser.add_argument('--parallel-jobs', type=int, default=None)
-```
-
----
-
-### 5. Privilege Management
-
-• ✓ Root check enforced at startup
-• ✓ Clear error message if run without sudo
-• ✓ No privilege escalation attempts
-• ✓ Respect for system capabilities
-
-**Evidence:**
-```python
-def check_root_privileges():
-    """Prüft Root-Rechte"""
-    if os.geteuid() != 0:
-        print(ERROR_MESSAGE)
-        sys.exit(1)
-```
-
----
-
-### 6. File System Safety
-
-• ✓ Backup directory created with safe permissions
-• ✓ Log files written to `/var/log/gentoo-updater/` (standard location)
-• ✓ No path traversal vulnerabilities
-• ✓ Uses `pathlib.Path` for safe path construction
-• ✓ Configuration files read from standard locations only
-
-**Evidence:**
-```python
-backup_dir = Path(f"/var/backups/gentoo-updater/{today}")
-backup_dir.mkdir(parents=True, exist_ok=True)
-```
-
----
-
-### 7. Error Handling
-
-• ✓ Comprehensive exception catching for system calls
-• ✓ No sensitive data in error messages
-• ✓ Graceful degradation (non-critical failures don't stop updates)
-• ✓ Detailed logging without exposing internals
-
-**Evidence:**
-```python
-try:
-    result = subprocess.run(cmd, timeout=timeout)
-except subprocess.TimeoutExpired:
-    logging.error("Command timed out after {} seconds".format(timeout))
-except subprocess.CalledProcessError as e:
-    logging.error("Command failed: {}".format(e.returncode))
-except Exception as e:
-    logging.exception("Unexpected error")
-```
-
----
-
-## ⚠️ WARNINGS & RECOMMENDATIONS
-
-### 1. Bare Except Clause
-
-**Location:** `gentoo-updater.py:32` (language detection)  
-**Issue:** Generic `except:` without specification  
-**Risk Level:** 🟡 LOW (Non-critical path)
-
-```python
-try:
-    system_locale = locale.getlocale()[0]
-    if system_locale and system_locale.startswith('de'):
-        return 'de'
-except:
-    pass
-return 'en'
-```
-
-**Recommendation:**
-```python
-except (AttributeError, TypeError):
-    pass
-```
-
----
-
-### 2. Subprocess with Partial Paths
-
-**Location:** Multiple (20 instances)  
-**Issue:** System binaries called without full path (e.g., `["emerge", ...]`)  
-**Risk Level:** 🟡 LOW (Mitigated by system design)
-
-Example:
-```python
-subprocess.run(["emerge", "--update", "--deep", "--newuse", "--pretend", "@world"])
-```
-
-**Why This Is Safe:**
-- Emerge is a critical system binary in PATH on all Gentoo systems
-- Using full path would make code fragile and Gentoo-specific
-- subprocess argument array prevents PATH injection attacks
-- Part of normal system operation model
-
-**Optional Enhancement (if PATH security is a concern):**
-```python
-import shutil
-emerge_path = shutil.which("emerge")
-if not emerge_path:
-    raise RuntimeError("emerge command not found")
-subprocess.run([emerge_path, "--update", "--deep", ...])
-```
-
----
-
-### 3. Blind Except for mirrorselect Failure
-
-**Location:** `gentoo-updater.py:1060`  
-**Issue:** Silent fallback when mirrorselect fails  
-**Risk Level:** 🟡 LOW
-
-```python
-try:
-    # mirrorselect logic
-except Exception:
-    pass
-```
-
-**Recommendation:** Log the failure and inform user:
-```python
-except Exception as e:
-    logging.warning(f"mirrorselect failed: {e}, using default mirrors")
-    self.print_info("Using standard mirrors instead of mirrorselect")
-```
-
----
-
-### 4. No Configuration Encryption
-
-**Current State:** JSON configuration stored in plaintext  
-**Risk Level:** 🟡 MEDIUM (if email credentials are added)
-
-**Note:** Currently safe because:
-- Email recipients only (no SMTP credentials stored)
-- Config file has restrictive permissions (mode 0600 recommended)
-- No sensitive data present by design
-
-**If Adding Email Credentials Later:**
-- Use environment variables: `${EMAIL_PASSWORD}` 
-- Or implement `keyring` library integration
-- Never hardcode credentials
-
-Example safe approach:
-```python
-email_password = os.environ.get('GENTOO_UPDATER_EMAIL_PASSWORD')
-if not email_password:
-    logging.warning("Email password not set in environment")
-```
-
----
-
-## 🔐 Security Best Practices (Implemented)
-
-✅ **Type Hints** - Clear function signatures
-```python
-def run_emerge_command(self, command: List[str]) -> Tuple[bool, str]:
-```
-
-✅ **Argument Parsing** - Validates all CLI arguments
-```python
-parser.add_argument('--timeout', type=int, default=3600)
-```
-
-✅ **Timeout Protection** - All subprocess calls have timeouts
-```python
-subprocess.run(cmd, timeout=timeout)
-```
-
-✅ **Logging Strategy** - Structured logging with levels
-```python
-logging.getLogger(__name__).setLevel(log_level)
-```
-
-✅ **No Sensitive Data Logging** - Credit card agnostic
-- No system passwords logged
-- No configuration secrets logged
-- Only operational status information
-
-✅ **Proper Permission Checking** - Root verification
-```python
-if os.geteuid() != 0:
-    sys.exit(1)
-```
-
-✅ **Configuration Validation** - Safe defaults
-```python
-config = json.loads(config_content)
-timeout = config.get('timeout', 3600)  # Safe default
-```
-
----
-
-## 📋 Security Checklist for Production Deployment
-
-If using in production environments:
-
-- [ ] Set config file permissions: `chmod 600 gentoo-updater.conf`
-- [ ] Set log directory permissions: `chmod 750 /var/log/gentoo-updater/`
-- [ ] Use a dedicated service account if scheduling via cron
-- [ ] Monitor log files for errors: `tail -f /var/log/gentoo-updater/updates.log`
-- [ ] Regular backups of configuration: `cp gentoo-updater.conf gentoo-updater.conf.bak`
-- [ ] Review emerge output before actual updates (use `--pretend` mode first)
-- [ ] Test email notifications in non-critical environment first
-- [ ] Regularly update system packages (including Gentoo packages themselves)
-- [ ] Monitor disk space regularly (the script checks, but manual verification is good)
-- [ ] Keep Python 3.10+ for security patches
-
----
-
-## 🎯 Overall Security Assessment
+## Summary
 
 | Category | Status | Risk | Notes |
 |----------|--------|------|-------|
-| Secrets/Credentials | ✅ PASS | 🟢 LOW | No hardcoded secrets |
-| Code Execution | ✅ PASS | 🟢 LOW | Subprocess uses safe patterns |
-| Dependencies | ✅ PASS | 🟢 LOW | Only stdlib - minimal surface |
-| Input Validation | ✅ PASS | 🟢 LOW | argparse + type checking |
-| Privilege Model | ✅ PASS | 🟢 LOW | Root enforcement clear |
-| File System | ✅ PASS | 🟢 LOW | Safe path handling |
-| Error Handling | ✅ PASS | 🟢 LOW | Comprehensive exception catching |
-| Configuration | ⚠️ WARN | 🟡 MEDIUM | No encryption (not needed today) |
+| Secrets/Credentials | ✅ PASS | 🟢 LOW | No hardcoded secrets, no tokens/keys in tracked files |
+| Code Execution | ✅ PASS | 🟢 LOW | No `eval`/`exec`/`shell=True`/`os.system`; all subprocess calls use argument lists |
+| Dependencies | ✅ PASS | 🟢 LOW | Python standard library only |
+| Input Validation | ✅ PASS | 🟢 LOW | Webhook URL scheme checked; e-mail address validated (R2, fixed) |
+| Privilege Model | ✅ PASS | 🟢 LOW | Root check before any file is written |
+| File System | ✅ PASS | 🟢 LOW | Log dir `0750`, backup dir `0700` (R3, fixed) |
+| Output to user | ✅ PASS | 🟢 LOW | Suggested `package.use` commands only with valid PMS names (R1, fixed) |
+| CI/CD Workflows | ✅ PASS | 🟢 LOW | Minimal permissions, no script injection; actions pinned by tag (R4) |
 
-**Overall Rating:** `✅ SAFE FOR PRODUCTION`
-
-- **For Development/Testing:** No concerns
-- **For Production Systems:** Follow the checklist above
-- **For Sensitive Networks:** Consider environment-based configuration
+**Bandit:** 0 high, 2 medium (both expected/false positive), 36 low.
 
 ---
 
-## 📝 Scan Details
+## 🔧 Bandit Results
 
-### Methods Used
+```
+Tool:            Bandit 1.9.4
+Python:          3.14.10
+Files:           gentoo-updater.py, install.py, scripts/create-release.py
+Lines of code:   3,249 (Bandit LOC)
+Skipped (nosec): 1  (B310 webhook urlopen – scheme validated, see below)
 
-• Manual static code analysis (grep, AST parsing)
-• Dependency enumeration (explicit imports only)
-• Configuration file validation
-• Subprocess call pattern matching
-• Professional Bandit Security Scanner (✅ Executed)
-• File permission analysis
-• Error handling review
+Severity High:    0 ✅
+Severity Medium:  2
+Severity Low:    36
+```
 
-### Scanned Files
+| Test | Count | Severity | Verdict |
+|------|-------|----------|---------|
+| B603 subprocess without shell | 17 | Low | ✅ False positive – argument lists, no shell |
+| B607 partial executable path | 14 | Low | ✅ Expected – `emerge`, `eselect`, `find`, `mail`, `mirrorselect`, `etc-update`, `uname` from root's `PATH` |
+| B404 import subprocess | 3 | Low | ✅ Required for Portage integration |
+| B110 try/except/pass | 2 | Low | ℹ️ Non-critical paths (see below) |
+| B108 hardcoded tmp directory | 1 | Medium | ✅ False positive |
+| B103 chmod 0o755 | 1 | Medium | ✅ Expected |
 
-• `gentoo-updater.py` (2,279 lines) - Main update orchestrator
-• `install.py` (473 lines) - Installation and version management
-• `scripts/create-release.py` (541 lines) - Release automation tooling
-• Configuration handling analysis
-• Total source reviewed: 2,576 LOC (Bandit code metrics)
+**B108 – `gentoo-updater.py:727`** (`find_build_log`): `/var/tmp` is only the default for
+`PORTAGE_TMPDIR` to locate an existing `build.log`, which is then **read** (last 64 KiB). Nothing is
+created or written there, so the usual tmp-file race conditions do not apply.
 
-### Exclusions
+**B103 – `install.py:241`**: `chmod 0o755` on the installed command in `/usr/local/bin`. This is the
+standard permission for system executables; the file contains no secrets.
 
-The following were intentionally excluded from security analysis:
-• Binary dependencies (already audited by Gentoo)
-• Virtual environment packages (development only)
-• Release notes and documentation
-• Build scripts (not execution path)
+**B110 – `gentoo-updater.py:40`** (language detection, bare `except:`) and **`:2303`**
+(`eselect python list` hint, `except Exception: pass`). Both only affect informational output.
+The bare `except:` also swallows `KeyboardInterrupt`; `except Exception:` would be cleaner.
 
 ---
 
-## 🔧 Bandit Security Scanner Results
+## Manual Review
 
-### Summary
+### 1. Secrets & Credentials ✅
+- No API keys, tokens, passwords or private keys in tracked files (pattern search for
+  `ghp_`, `github_pat_`, `AKIA…`, `BEGIN … PRIVATE KEY`).
+- `gentoo-updater.conf.example` contains no secrets.
+- The webhook URL (which may contain a token) is only printed when it is invalid or in dry-run mode.
 
-```
-Tool: Bandit v1.9.3
-Python Version: 3.14.0
-Run Date: 2026-02-15 18:59:32
+### 2. Code Execution ✅
+- No `eval()`, `exec()`, `os.system()`, `os.popen()`, `pickle`, `yaml.load`.
+- No `shell=True`. All 17 `subprocess.run`/`Popen` calls pass argument lists; the only
+  variable parts are package atoms from Portage output, config values from the root-owned config
+  file, or CLI options of the root user.
 
-Scanned Files:
-├─ gentoo-updater.py
-├─ install.py
-└─ scripts/create-release.py
+### 3. Network ✅
+- Webhook (`send_webhook`): only `http://`/`https://` accepted (prevents `file://` etc.),
+  10 s timeout, payload contains host name, status and counters only.
+- Internet check: plain TCP connects to public DNS servers / gentoo.org, no data sent.
 
-Total Issues:      56
-├─ Severity High:   0 ✅
-├─ Severity Medium: 1 (chmod permissions - see B103 below)
-└─ Severity Low:   55 (Expected findings / false positives)
+### 4. Privilege Model ✅
+- `main()` checks `os.geteuid() == 0` before `/var/log/gentoo-updater` is created.
+- Autounmask recovery writes only to `/etc/portage` (`CONFIG_PROTECT_MASK=/etc/portage`), not a global
+  `etc-update --automode -3`.
+- `--etc-update-mode auto` overwrites local changes in `/etc` – documented, opt-in only.
+- Mirror settings are only changed on explicit request (`--german-mirrors`, `--mirrors`,
+  `--use-mirrorselect`); a backup of `make.conf` is written first.
 
-Code Metrics:
-├─ Total Lines: 2,576 (Bandit LOC)
-├─ Skipped Lines: 0
-└─ Issues Skipped: 0
-```
-
-### Issue Breakdown
-
-#### B404: subprocess module usage (4 instances) - FALSE POSITIVE ✅
-
-```
-Location: gentoo-updater.py:7 (and 4 more)
-Code: import subprocess
-
-Analysis:
-✅ SAFE - subprocess is used correctly with argument arrays
-✅ SAFE - No shell injection vectors
-✅ NECESSARY - Required for Gentoo package manager integration
-Verdict: Standard and safe usage
-```
-
-#### B110: Try/Except/Pass (2 instances) - FALSE POSITIVE ✅
-
-```
-Location: gentoo-updater.py:36
-Code: 
-    try:
-        system_locale = locale.getlocale()[0]
-    except:
-        pass
-
-Analysis:
-✅ SAFE - Non-critical fallback (language detection only)
-✅ SAFE - No security-sensitive operation in try block
-Recommendation: Catch specific exceptions (fixed in next version)
-```
-
-#### B103: Chmod Setting Permissive Mask (1 instance) - LOW RISK ✅
-
-```
-Location: install.py:315
-Code:
-    os.chmod(self.dest_file, 0o755)
-
-Analysis:
-✓ SAFE FOR CONTEXT - 0o755 is standard for executable scripts
-✓ EXPECTED - Binary installation must be executable for all users
-✓ INTENTIONAL - This is the correct permission for system commands
-
-Why This Is Safe:
-- Installation scripts must be readable/executable by all users
-- 0o755 means: rwx r-x r-x (owner: full, group: read+exec, other: read+exec)
-- Standard permission for /usr/bin and /usr/local/bin executables
-- No sensitive data in the script itself
-- Script is installing to /usr/local/bin (system-wide accessible)
-
-Alternative (if higher security desired):
-    os.chmod(self.dest_file, 0o700)  # rwx --- --- (owner only)
-    # But this would prevent other users from running the command
-
-Verdict: Standard permission for system command installation
-```
-
-#### B607: Subprocess with Partial Executable Path (22 instances) - FALSE POSITIVE ✅
-
-```
-Affected Commands:
-├─ emerge (10x) - Main package manager (always in PATH on Gentoo)
-├─ which (5x) - Utility to check binary availability (5 in install.py)
-├─ eselect (2x) - Gentoo profile management
-├─ find (1x) - File system search
-├─ mail (1x) - System notification utility
-├─ mirrorselect (2x) - Mirror selection utility
-└─ etc-update (1x) - Configuration file management
-
-Analysis:
-✅ SAFE - All commands are system binaries in PATH
-✅ SAFE - Using argument arrays prevents injection
-✅ SAFE - No user input in command specification
-✅ EXPECTED - Gentoo standard tools must be in PATH
-✅ NEW - install.py uses which() to detect commands before execution
-Verdict: Known false positive for standard Gentoo tooling
-```
-
-#### B603: subprocess without explicit shell=True (27 instances) - FALSE POSITIVE ✅
-
-```
-Analysis:
-✅ SAFE - Programs explicitly use argument arrays (implicit shell=False)
-✅ SAFE - No string concatenation in command building
-✅ SAFE - No unsanitized user input in any command
-✅ NEW - install.py also uses safe argument format
-Pattern Verified: All calls use [command, arg1, arg2, ...] format
-
-Example (SAFE pattern - install.py):
-    subprocess.run(
-        ["which", command],  # ← Argument array (no shell)
-        capture_output=True,
-        check=True
-    )
-
-Example (SAFE pattern - etc-update):
-    subprocess.run(
-        ["etc-update", "-a"],  # ← Argument array (no shell)
-        check=False
-    )
-
-Example (SAFE pattern - original):
-    subprocess.run(
-        ["emerge", "--pretend", "@world"],  # ← Argument array
-        capture_output=True,
-        text=True
-    )
-```
-
-### Bandit Verdict
-
-✅ **NO REAL VULNERABILITIES FOUND**
-
-All 56 reported issues are either known Bandit false positives for safe patterns or expected findings:
-- Safe subprocess calls with argument arrays (27 instances via B603)
-- System binaries only (no untrusted executables)
-- No shell execution parameter set
-- No input injection vectors present
-- All tools are standard on Gentoo systems
-- 1 Medium severity (chmod 0o755) is standard for executable installation
-- install.py and scripts/create-release.py both follow safe subprocess patterns
-
-**Conclusion:** Bandit warnings are expected for system administration tools that call external binaries in a controlled manner. Each call has been manually verified as safe. The chmod issue is expected and appropriate for system command installation.
+### 5. CI/CD Workflows ✅
+- `pr-check.yml`: PR title passed via `env:` instead of `${{ }}` inside the script (no script injection).
+- Workflow-level `permissions:` are minimal (`contents: read`, write only where needed).
+- No `pull_request_target`.
 
 ---
 
-## 📊 Complete Security Scorecard
+## ⚠️ Recommendations
 
-| Aspect | Method | Result | Details |
-|--------|--------|--------|---------|
-| Manual static analysis | Code review | ✅ PASS | No dangerous functions detected |
-| Dependency audit | Import enumeration | ✅ PASS | Only Python stdlib (35 std library imports) |
-| Subprocess calling | Pattern analysis | ✅ PASS | All use safe argument array pattern |
-| Input validation | Configuration + CLI | ✅ PASS | argparse + JSON schema validation |
-| File operations | Path analysis | ✅ PASS | Using pathlib (safe path handling) |
-| Error handling | Exception analysis | ✅ PASS | Comprehensive try/except blocks |
-| Credential management | Grep + review | ✅ PASS | No hardcoded secrets of any kind |
-| Bandit scanner | Automated tool | ✅ PASS | 0 real vulnerabilities, 55 low-risk findings + 1 expected medium finding |
-| Configuration safety | File analysis | ✅ PASS | Supports environment variables |
-| Output sanitization | Log analysis | ✅ PASS | No sensitive data in logs |
+### R1 – Validate names in suggested `package.use` commands (new feature) ✅ FIXED
+`suggest_use_fixes()` prints ready-to-run commands such as
+`echo "dev-qt/qttools designer" >> /etc/portage/package.use/qttools`, which the user runs as root.
+Package and flag names come from the emerge slot-conflict output, i.e. from ebuilds of the
+configured repositories – including third-party overlays (e.g. GURU). A malicious ebuild could put
+shell metacharacters into a USE dependency.
 
-**Final Rating:** `🟢 PRODUCTION-READY`
+**Fix:** `parse_conflict_use_requirements()` only accepts package names matching
+`PACKAGE_NAME_PATTERN` (`^[A-Za-z0-9_][A-Za-z0-9+_.-]*/[A-Za-z0-9_][A-Za-z0-9+_-]*$`) and flags matching
+`USE_FLAG_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9+_@.-]*$`, PMS 3.1); anything else is dropped.
+Verified with crafted input (`evil/pkg$(id)`, ``bad`id` ``, `-$(rm)`): none of it is suggested.
 
----
+### R2 – E-mail address passed to `mail` without validation ✅ FIXED
+`send_notification()` runs `['mail', '-s', subject, email]`. An address starting with `-`
+would be interpreted as an option of `mail` (argument injection). The value comes from the
+root-owned config file, so exploitation requires root access anyway.
 
-## 🔍 Key Security Design Decisions
+**Fix:** `send_notification()` checks the address against `EMAIL_PATTERN` (no leading `-`, no
+whitespace, `local@domain.tld`) and sends no mail with a warning otherwise.
 
-### 1. **Standard Library Only**
-- Why: Reduces supply chain attacks
-- Impact: All dependencies are under Python's version control
-- Trade-off: Code is more verbose than frameworks
+### R3 – Logs and backups are world-readable ✅ FIXED
+`/var/log/gentoo-updater/` and `/var/backups/gentoo-updater/` are created with mode `0755`,
+files with `0644`. Backups contain `/etc/portage` and the world file, logs contain the package list.
+Not secret on most systems, but it reveals installed software and versions to local users.
 
-### 2. **Argument Arrays for subprocess**
-- Why: Prevents shell injection attacks
-- Impact: Safe to call system commands
-- Trade-off: Cannot use shell pipes or redirects
+**Fix:** on every run the updater sets `/var/log/gentoo-updater` to `0750` and the backup directory
+(`backup_dir`, default `/var/backups/gentoo-updater`) to `0700` via `restrict_permissions()`.
+Existing installations are corrected on the next run.
 
-### 3. **Mandatory Root Check**
-- Why: Prevents accidental use without proper privileges
-- Impact: Clear security model
-- Trade-off: Cannot be used by regular users
+### R4 – GitHub Actions pinned by tag 🟢 LOW
+Actions are referenced by tag (`actions/checkout@v4`, `softprops/action-gh-release@v2`, …).
+A compromised tag of a third-party action would run in the release job with `contents: write`.
 
-### 4. **Explicit Timeout on All Calls**
-- Why: Prevents hanging processes
-- Impact: Predictable execution time
-- Trade-off: Must set reasonable timeout values
+**Recommendation:** pin at least `softprops/action-gh-release` to a full commit SHA.
 
-### 5. **Structured Logging**
-- Why: Enables security audit trails
-- Impact: Can detect attack attempts
-- Trade-off: More verbose log output
+### Note – Timeouts
+Commands started via `run_command()` honour `--timeout`. The default is **no timeout**, and a few
+helper calls (`emerge --pretend @world`, `eselect`, `find`, `mail`) run without one. This is a
+robustness issue rather than a security issue: a hanging command blocks the update run.
 
 ---
 
-## 🎓 Security Learning Resources
+## Corrections to the previous report (2026-02-15)
 
-For developers working on this project:
+The previous report contained statements that do not match the code:
 
-- [OWASP Python Security](https://owasp.org/www-project-python-security/)
-- [Bandit Documentation](https://bandit.readthedocs.io/)
-- [Python subprocess Security](https://docs.python.org/3/library/subprocess.html#security-considerations)
-- [CWE-78: OS Command Injection](https://cwe.mitre.org/data/definitions/78.html)
+| Previous statement | Actual state |
+|--------------------|--------------|
+| "Timeouts enforced on all subprocess calls" | Optional (`--timeout`), several helper calls without timeout |
+| "Email addresses validated before use" | Was not validated – fixed now (R2) |
+| "Logging implementation uses dedicated filtering for sensitive data" | No filtering exists; nothing sensitive is logged by design |
+| "Bare except fixed in next version" | Still present at `gentoo-updater.py:40` |
 
 ---
 
-## 📧 Security Reporting
+## 📋 Deployment Checklist
 
-**Found a vulnerability?** 
-Please report security issues **privately** via:
-- GitHub Security Advisory: https://github.com/roimme65/gentoo-updater/security
-- Do **NOT** open public issues for security findings
+- [ ] `chmod 600 /etc/gentoo-updater.conf` (currently created as `0644`)
+- [ ] Use `--dry-run` first after upgrading the updater
+- [ ] Set `--timeout` when running from cron/systemd timers
+- [ ] Review suggested `package.use` lines before applying them
 
 ---
 
 ## 📝 Scan Metadata
 
-- **Scanner Version:** Bandit 1.9.3
-- **Python Version Scanned:** 3.14.0
-- **Scan Date:** 2026-02-15 18:59:32
-- **Total Time:** ~52 seconds
-- **Files Scanned:** gentoo-updater.py + install.py + scripts/create-release.py
-- **Repository:** Public (https://github.com/roimme65/gentoo-updater)
-- **Last Updated:** 2026-02-15
-- **Next Recommended Scan:** 2026-05-15 (quarterly)
+- **Methods:** Bandit 1.9.4 (automated), manual review of all subprocess/network/file operations,
+  secret pattern search over tracked files, GitHub workflow review, check of file permissions on
+  a live system
+- **Files:** `gentoo-updater.py` (3,223 lines), `install.py` (389), `scripts/create-release.py` (525),
+  `.github/workflows/*.yml`
+- **Dependencies:** none outside the Python standard library (no `pip-audit` needed)
+- **Next recommended scan:** 2027-02 (quarterly) or after larger features
 
 ---
 
-## 🆕 New Security Findings - install.py (v1.4.28+)
+## 📧 Security Reporting
 
-### `install.py` Security Assessment
-
-**Status:** ✅ SECURE  
-**Scan Date:** 2026-02-15  
-**Lines Scanned:** 473
-
-#### Key Features Reviewed
-
-**VersionManager Class:**
-- Version bumping (major/minor/patch)
-- File modification with regex (version patterns)
-- All version patterns are hardcoded constants (safe)
-
-**SystemChecker Class:**
-- Root privilege verification
-- Python 3 version checking
-- Gentoo Linux detection
-- Optional dependency detection
-
-**Installer Class:**
-- File copy to system location
-- Executable permission setting
-- Dependency installation request
-
-#### Security Findings
-
-✅ **No code execution vulnerabilities**
-✅ **No hardcoded credentials**
-✅ **Safe subprocess patterns** (all use argument arrays)
-✅ **Proper error handling** (try/except blocks)
-
-⚠️ **B103: chmod 0o755 for executable**
-- **Severity:** Medium (but expected)
-- **Reason:** Standard permission for system commands
-- **Impact:** None - this is correct behavior
-- **Documentation:** Added to B103 section above
-
-#### Subprocess Calls in install.py
-
-```python
-# Safe: which() to verify command exists before use
-subprocess.run(["which", command], capture_output=True, check=True)
-
-# Safe: emerge for optional package installation  
-subprocess.run(["emerge", "--ask", portage_pkg], check=False)
-```
-
-**All subprocess calls evaluated:** ✅ SAFE
-
-#### Version Management Safety
-
-```python
-# Safe: Hardcoded version patterns list
-VERSION_PATTERNS = [
-    'gentoo-updater.py',      # Hardcoded file names
-    'install.py'
-]
-
-# Safe: Regex substitution with fixed patterns
-pattern = r'__version__ = "[0-9.]+"'
-new_version_str = re.sub(pattern, f'__version__ = "{version}"', content)
-```
-
-**Pattern Injection Risk:** ✅ MITIGATED
-- Version patterns only reference hardcoded file names
-- No user input in version pattern construction
-- Regex patterns are fixed strings (not derived from input)
-
-### Overall Assessment
-
-| Component | Status | Risk |
-|-----------|--------|------|
-| Subprocess safety | ✅ PASS | Low |
-| File operations | ✅ PASS | Low |
-| Version management | ✅ PASS | Low |
-| Privilege checks | ✅ PASS | Low |
-| Error handling | ✅ PASS | Low |
-| Chmod permissions | ⚠️ ACCEPTABLE | Low |
-
-**Conclusion:** install.py is secure and follows all safety best practices. The chmod warning is expected and appropriate for system command installation.
-
----
-
-## 🆕 New Features - Security Review (v1.4.29+)
-
-### `--etc-update-mode` Configuration Feature
-
-**Added in:** Latest version  
-**Security Assessment:** ✅ SAFE
-
-```python
-# New safe subprocess calls for configuration management
-subprocess.run(["etc-update", "-a"], check=False)  # Automatic mode
-subprocess.run(["etc-update"], check=False)         # Interactive mode
-```
-
-**Security Analysis:**
-- ✅ Uses argument array pattern (no shell injection)
-- ✅ No user input in command specification
-- ✅ etc-update is standard Gentoo tool (in PATH)
-- ✅ All modes (interactive/auto/skip) are safe
-- ✅ No configuration file injection vectors
-
-**Implementation Details:**
-- `--etc-update-mode {interactive|auto|skip}`
-- Interactive: User-controlled via ncurses UI
-- Auto: Automated with `etc-update -a`
-- Skip: Configuration updates deferred
-
-**No security regressions introduced** ✅
-
----
-
-**Document Version:** 1.0  
-**Status:** ✅ APPROVED FOR PUBLICATION  
-**Classification:** PUBLIC (Security-Focused Transparency)
+Please report vulnerabilities **privately** via GitHub Security Advisory:
+https://github.com/roimme65/gentoo-updater/security – do **not** open public issues.

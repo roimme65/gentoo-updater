@@ -22,7 +22,7 @@ Ein automatisches Update-Skript für Gentoo Linux, das den gesamten Update-Proze
 
 ### 🛡️ Sicherheit & Zuverlässigkeit
 - 💾 **Automatische Backups** wichtiger Konfigurationsdateien
-- 🔍 **Blockierte Pakete Prüfung** vor Updates
+- 🔍 **Blockierte Pakete Prüfung** vor Updates, mit Vorschlag für fehlende USE-Flags (`package.use`)
 - ⚠️ **Kritische Paket-Warnung** (gcc, glibc, Python)
 - 🌐 **Internetverbindungs-Prüfung** (automatisch vor Update-Start)
 - 📝 **Vollständiges Logging-System** mit JSON-Export
@@ -229,6 +229,10 @@ Das Skript führt folgende Schritte automatisch aus:
 3. **Update-Prüfung**
    - Prüft ob Updates verfügbar sind
    - Zeigt eine Liste aller zu aktualisierenden Pakete
+   - Bei blockierten Paketen oder Slot-Konflikten: sucht nach USE-Flags, die ein Paket verlangt,
+     die aber nicht gesetzt sind, und schlägt die passende `package.use`-Zeile vor
+     (z.B. `dev-qt/qttools designer`, wenn `dev-python/pyside[tools]` es benötigt).
+     Der Updater ändert `package.use` dabei nicht selbst.
 
 4. **System-Update**
    - Führt `emerge @world --update --deep --newuse` aus

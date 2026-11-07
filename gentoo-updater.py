@@ -125,6 +125,18 @@ TRANSLATIONS = {
         'de': 'Bitte lösen Sie die Blockierungen manuell auf.',
         'en': 'Please resolve the blocking packages manually.'
     },
+    'USE_FIX_FOUND': {
+        'de': 'Ursache gefunden: Benötigte USE-Flags sind nicht gesetzt:',
+        'en': 'Cause found: required USE flags are not set:'
+    },
+    'USE_FIX_REQUIRED_BY': {
+        'de': 'benötigt von',
+        'en': 'required by'
+    },
+    'USE_FIX_HOWTO': {
+        'de': 'Vorschlag (als root ausführen, danach Update erneut starten):',
+        'en': 'Suggestion (run as root, then restart the update):'
+    },
     'CRITICAL_PACKAGES_WARNING': {
         'de': 'ACHTUNG: Kritische Pakete werden aktualisiert!',
         'en': 'WARNING: Critical packages will be updated!'
@@ -608,6 +620,77 @@ FAILED_SUMMARY_PATTERN = re.compile(r'^\s*\*\s+\(([^,\s]+), (?:ebuild|binary) sc
 MERGE_STARTED_PATTERN = re.compile(r'^>>> (?:Emerging|Installing|Verifying ebuild manifests)', re.MULTILINE)
 
 
+# USE-Anforderung in einem Slot-Konflikt, z.B.
+# "    =dev-qt/qttools-6.11.3*:6[assistant,designer] required by (dev-python/pyside-6.11.3:6/6.11.3::gentoo, ..."
+CONFLICT_USE_REQUIREMENT_PATTERN = re.compile(
+    r'^\s+(\S+?)\[([^\]]+)\] required by \(([^,\s]+)', re.MULTILINE)
+
+# Gültige Paket- und USE-Flag-Namen (PMS 3.1). Die Namen stammen aus Ebuilds (auch aus Overlays)
+# und landen in Shell-Befehlen, die der Benutzer als root ausführt - alles andere wird verworfen.
+PACKAGE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9+_.-]*/[A-Za-z0-9_][A-Za-z0-9+_-]*$')
+USE_FLAG_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9+_@.-]*$')
+
+# USE="..." in der Ausgabe von emerge --pretend --verbose
+EMERGE_USE_PATTERN = re.compile(r'^\[(?:ebuild|binary)[^\]]*\].*?\sUSE="([^"]*)"', re.MULTILINE)
+
+
+def parse_conflict_use_requirements(output: str) -> List[Dict[str, object]]:
+    """Liefert die USE-Anforderungen aus der Slot-Konflikt-Ausgabe von emerge
+
+    Berücksichtigt nur feste Flags ("flag" bzw. "-flag"); bedingte Anforderungen
+    wie "flag?", "flag=" oder "!flag?" hängen von anderen Paketen ab und werden ignoriert.
+
+    Returns:
+        Liste von Dicts mit 'atom' (für emerge abfragbar), 'package', 'enable', 'disable', 'required_by'
+    """
+    requirements = []
+    for atom, flags, required_by in CONFLICT_USE_REQUIREMENT_PATTERN.findall(output or ''):
+        enable, disable = set(), set()
+        for flag in flags.split(','):
+            flag = re.sub(r'\([+-]\)$', '', flag.strip())
+            if not flag or flag.startswith('!') or flag.endswith(('?', '=')):
+                continue
+            target = disable if flag.startswith('-') else enable
+            flag = flag.lstrip('-')
+            if USE_FLAG_PATTERN.match(flag):
+                target.add(flag)
+        if not enable and not disable:
+            continue
+        # "dev-qt/qtbase:6/6.11.2=" -> "dev-qt/qtbase:6" (Subslot/Slot-Operator sind nicht abfragbar)
+        query_atom = re.sub(r'(:[^/=]+)(?:/[^=]*)?=?$', r'\1', atom)
+        name = package_name(query_atom.lstrip('<>=~').rstrip('*'))
+        if not PACKAGE_NAME_PATTERN.match(name):
+            continue
+        requirements.append({
+            'atom': query_atom,
+            'package': name,
+            'enable': enable,
+            'disable': disable,
+            'required_by': strip_atom(required_by),
+        })
+    return requirements
+
+
+def parse_emerge_use(output: str) -> Tuple[set, set]:
+    """Liefert (aktive, deaktivierte) USE-Flags aus 'emerge -pv'
+
+    Erzwungene/maskierte Flags in Klammern lassen sich nicht über package.use ändern und werden ignoriert.
+    """
+    match = EMERGE_USE_PATTERN.search(output or '')
+    enabled, disabled = set(), set()
+    if not match:
+        return enabled, disabled
+    for token in match.group(1).split():
+        if token.startswith('('):
+            continue
+        token = token.rstrip('*%')
+        if token.startswith('-'):
+            disabled.add(token[1:])
+        else:
+            enabled.add(token)
+    return enabled, disabled
+
+
 def strip_atom(atom: str) -> str:
     """Entfernt Slot und Repository: 'cat/pkg-1.0:0/0::gentoo' -> 'cat/pkg-1.0'"""
     return atom.split('::')[0].split(':')[0]
@@ -724,6 +807,19 @@ def installed_dist_kernels(vdb: str = VDB_PATH) -> List[str]:
 def is_kernel_package(name: str) -> bool:
     """Prüft, ob ein Paketname (ohne Version) ein Kernel-Paket ist"""
     return name in KERNEL_PACKAGES or (name.startswith('sys-kernel/') and name.endswith('-sources'))
+
+
+def restrict_permissions(path: Path, mode: int):
+    """Setzt die Rechte eines Verzeichnisses explizit (mkdir(mode=...) hängt von der umask ab und ändert bestehende Verzeichnisse nicht)"""
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
+# Einfache Plausibilitätsprüfung für notification_email; verhindert vor allem,
+# dass ein Wert mit führendem '-' von 'mail' als Option gelesen wird
+EMAIL_PATTERN = re.compile(r'^[A-Za-z0-9._%+=][A-Za-z0-9._%+=-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
 
 
 class Colors:
@@ -895,6 +991,7 @@ class GentooUpdater:
         # Logging einrichten
         self.log_dir = Path('/var/log/gentoo-updater')
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        restrict_permissions(self.log_dir, 0o750)
         self.log_file = self.log_dir / f"update-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
         
         self.setup_logging()
@@ -1011,6 +1108,8 @@ class GentooUpdater:
         
         try:
             backup_path.mkdir(parents=True, exist_ok=True)
+            # Backups enthalten /etc/portage und die world-Datei - nur für root lesbar
+            restrict_permissions(backup_dir, 0o700)
             
             # Wichtige Dateien sichern
             important_files = [
@@ -1065,12 +1164,14 @@ class GentooUpdater:
             )
         return self.pretend_result
 
-    def check_blocked_packages(self, pretend_output: str, auto_resolve: bool = False) -> bool:
+    def check_blocked_packages(self, pretend_output: str, auto_resolve: bool = False,
+                               conflict_output: str = '') -> bool:
         """Prüft auf blockierte Pakete
 
         Args:
             pretend_output: Ausgabe von emerge --pretend @world
             auto_resolve: Wenn True, wird nur gewarnt statt zu stoppen
+            conflict_output: Zusätzliche Ausgabe (stderr) mit Slot-Konflikt-Details
 
         Returns:
             True wenn keine Blockierungen oder auto_resolve=True, sonst False
@@ -1088,10 +1189,68 @@ class GentooUpdater:
                 return True  # Fortfahren und --backtrack in emerge verwenden
             else:
                 self.print_error(_('BLOCKED_PACKAGES_FOUND'))
-                self.print_info(_('BLOCKED_INFO'))
+                if not self.suggest_use_fixes(conflict_output):
+                    self.print_info(_('BLOCKED_INFO'))
                 return False
         return True
-    
+
+    def suggest_use_fixes(self, conflict_output: str) -> List[str]:
+        """Sucht in der Slot-Konflikt-Ausgabe nach USE-Anforderungen, die die aktuelle
+        Konfiguration nicht erfüllt, und schlägt passende package.use-Zeilen vor.
+
+        Häufiger Fall: ein neues Paket verlangt ein zusätzliches Flag (z.B. pyside[tools]
+        -> qttools[designer]); Portage behält dann die alte Version und meldet Blocker.
+
+        Returns:
+            Liste der vorgeschlagenen package.use-Zeilen (leer, wenn nichts gefunden)
+        """
+        requirements = parse_conflict_use_requirements(conflict_output)
+        if not requirements:
+            return []
+
+        use_cache: Dict[str, Tuple[set, set]] = {}
+        missing: Dict[str, Dict[str, set]] = {}
+        for req in requirements:
+            atom = req['atom']
+            if atom not in use_cache:
+                # Ohne Binärpakete abfragen, damit die konfigurierten Flags angezeigt werden
+                try:
+                    result = subprocess.run(
+                        ["emerge", "--pretend", "--verbose", "--nodeps",
+                         "--usepkg=n", "--getbinpkg=n", "--color=n", atom],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    use_cache[atom] = parse_emerge_use(result.stdout)
+                except (subprocess.SubprocessError, OSError) as e:
+                    self.logger.debug(f"USE-Abfrage für {atom} fehlgeschlagen: {e}")
+                    use_cache[atom] = (set(), set())
+            enabled, disabled = use_cache[atom]
+
+            entry = missing.setdefault(req['package'], {'flags': set(), 'required_by': set()})
+            unmet = {f for f in req['enable'] if f in disabled} | \
+                    {f'-{f}' for f in req['disable'] if f in enabled}
+            if unmet:
+                entry['flags'] |= unmet
+                entry['required_by'].add(req['required_by'])
+
+        lines = [f"{pkg} {' '.join(sorted(info['flags'], key=lambda f: f.lstrip('-')))}"
+                 for pkg, info in sorted(missing.items()) if info['flags']]
+        if not lines:
+            return []
+
+        self.print_warning(_('USE_FIX_FOUND'))
+        for pkg, info in sorted(missing.items()):
+            if info['flags']:
+                flags = ' '.join(sorted(info['flags'], key=lambda f: f.lstrip('-')))
+                self.print_warning(f"  {pkg} {flags}   ({_('USE_FIX_REQUIRED_BY')} "
+                                   f"{', '.join(sorted(info['required_by']))})")
+        self.print_info(_('USE_FIX_HOWTO'))
+        for line in lines:
+            pkg_file = line.split()[0].split('/')[-1]
+            print(f"    echo \"{line}\" >> /etc/portage/package.use/{pkg_file}")
+        self.stats.setdefault('use_fix_suggestions', []).extend(lines)
+        return lines
+
     def detect_critical_updates(self, pretend_output: str) -> List[str]:
         """Erkennt kritische Paket-Updates und speichert sie in stats"""
         critical_packages = self.config.get('critical_packages', [])
@@ -1581,13 +1740,16 @@ class GentooUpdater:
 
             # Prüfe blockierte Pakete
             auto_resolve = self.config.get('resolve_blocks', False)
-            if not self.check_blocked_packages(result.stdout, auto_resolve=auto_resolve):
+            full_output = result.stdout + result.stderr
+            if not self.check_blocked_packages(result.stdout, auto_resolve=auto_resolve,
+                                               conflict_output=full_output):
                 sys.exit(1)
 
             if result.returncode != 0:
                 # Abhängigkeitsberechnung fehlgeschlagen (z.B. USE-Änderungen nötig).
                 # Das Update wird trotzdem versucht, damit autounmask-Recovery und Retries greifen.
-                print(result.stdout + result.stderr)
+                print(full_output)
+                self.suggest_use_fixes(full_output)
                 self.print_warning("emerge --pretend fehlgeschlagen - Update wird trotzdem versucht")
                 return True, result.stdout
 
@@ -2468,6 +2630,9 @@ class GentooUpdater:
         
         email = self.config.get('notification_email', '')
         if not email:
+            return
+        if not EMAIL_PATTERN.match(email):
+            self.print_warning(f"Ungültige notification_email in der Konfiguration - keine E-Mail gesendet: {email!r}")
             return
         
         status = "erfolgreich" if success else "mit Fehlern"

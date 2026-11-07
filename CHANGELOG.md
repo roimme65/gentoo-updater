@@ -1,3 +1,10 @@
+## Unreleased
+- Neu: Bei blockierten Paketen bzw. Slot-Konflikten wertet der Updater die USE-Anforderungen aus der emerge-Ausgabe aus und schlägt fehlende Flags als `package.use`-Zeile vor (z.B. `dev-qt/qttools designer`, wenn `dev-python/pyside[tools]` es verlangt)
+- Security: Vorgeschlagene `package.use`-Zeilen enthalten nur gültige Paket-/USE-Flag-Namen (Schutz vor manipulierten Overlay-Ebuilds)
+- Security: `notification_email` wird geprüft, bevor sie an `mail` übergeben wird (keine Option-Injection über führendes `-`)
+- Security: Log-Verzeichnis `0750`, Backup-Verzeichnis `0700` (Backups enthalten `/etc/portage` und die world-Datei)
+- SECURITY_SCAN.md aktualisiert (Bandit 1.9.4, Scan vom 2026-11-07)
+
 ## v2.1.0 (2026-11-03)
 - Fix: Download-/Checksum-Fehler (`Couldn't download`, `VERIFY FAILED`) lösen keine sinnlosen Backtrack-Retries mehr aus; stattdessen klare Meldung mit Datei, betroffenen Paketen und `--exclude`-Befehl
 - Backtrack-/`--binpkg-respect-use=n`-Retries nur noch, wenn die Abhängigkeitsberechnung fehlschlägt (nicht wegen der Warnung über übersprungene Updates)
