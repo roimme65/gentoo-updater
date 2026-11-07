@@ -12,7 +12,7 @@ import argparse
 from pathlib import Path
 
 # Versionsverwaltung - synchronisiert mit gentoo-updater.py (über scripts/create-release.py)
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Roland Imme"
 __license__ = "MIT"
 

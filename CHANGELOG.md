@@ -1,4 +1,4 @@
-## Unreleased
+## v2.2.0 (2026-11-07)
 - Neu: Bei blockierten Paketen bzw. Slot-Konflikten wertet der Updater die USE-Anforderungen aus der emerge-Ausgabe aus und schlägt fehlende Flags als `package.use`-Zeile vor (z.B. `dev-qt/qttools designer`, wenn `dev-python/pyside[tools]` es verlangt)
 - Security: Vorgeschlagene `package.use`-Zeilen enthalten nur gültige Paket-/USE-Flag-Namen (Schutz vor manipulierten Overlay-Ebuilds)
 - Security: `notification_email` wird geprüft, bevor sie an `mail` übergeben wird (keine Option-Injection über führendes `-`)
