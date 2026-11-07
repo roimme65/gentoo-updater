@@ -8,11 +8,11 @@ Die folgenden Versionen des Gentoo System Updaters erhalten Sicherheitsupdates:
 
 | Version | Unterstützt        | Status |
 | ------- | ------------------ | ------ |
-| 1.4.x   | :white_check_mark: | Aktuelle stabile Version |
-| 1.3.x   | :white_check_mark: | Unterstützt bis 30.06.2026 |
-| 1.2.x   | :white_check_mark: | Unterstützt bis 31.03.2026 |
-| 1.1.x   | :x:                | Lebensende erreicht |
-| < 1.1   | :x:                | Entwicklungsversionen |
+| 2.2.x   | :white_check_mark: | Aktuelle stabile Version (enthält Sicherheitsfixes, siehe [SECURITY_SCAN.md](SECURITY_SCAN.md)) |
+| 2.0.x – 2.1.x | :x:          | Bitte auf 2.2.x aktualisieren |
+| < 2.0   | :x:                | Lebensende erreicht |
+
+Sicherheitsfixes werden nur für die jeweils neueste Minor-Version veröffentlicht.
 
 ## Sicherheitsüberlegungen
 
@@ -35,20 +35,25 @@ Wenn Sie Cronjobs einrichten, werden diese mit Root-Rechten ausgeführt:
 
 ### Datenverarbeitung
 - Das Tool speichert keine sensiblen Daten
-- Log-Dateien enthalten Paketinformationen und Systemausgaben (ab v1.2.0)
-- JSON-Export von Update-Statistiken (ab v1.2.0, keine sensiblen Daten)
-- Automatische Backups von Konfigurationsdateien (ab v1.2.0)
-- Keine Netzwerkkommunikation außer mit Portage-Repositories
+- Log-Dateien und JSON-Zusammenfassungen in `/var/log/gentoo-updater/` (Verzeichnis `0750` ab v2.2.0)
+- Backups von `/etc/portage` und der world-Datei in `/var/backups/gentoo-updater/` (`0700` ab v2.2.0)
 - Alle emerge-Operationen werden in Echtzeit angezeigt
-- E-Mail-Benachrichtigungen optional (ab v1.2.0)
-- Erweiterte Parameter und Dry-Run-Tests (ab v1.4.0)
+- Netzwerkkommunikation:
+  - Portage-Sync sowie Download von Distfiles/Binärpaketen (emerge)
+  - Internet-Check vor dem Start: TCP-Verbindung zu öffentlichen DNS-Servern / gentoo.org, es werden keine Daten gesendet (abschaltbar mit `--skip-internet-check`)
+  - Optionaler Webhook (`--notification-webhook`, nur http/https): Hostname, Status und Zähler
+  - Optionale E-Mail über den lokalen `mail`-Befehl (Adresse wird ab v2.2.0 geprüft)
 
 ### Systemintegrität
-- Das Tool führt nur offizielle emerge-Befehle aus
-- Keine Modifikation von Systemdateien außerhalb der Portage-Kontrolle
-- Konfigurationsdatei-Support (ab v1.2.0): `/etc/gentoo-updater.conf`
-- Automatische Backups vor Updates (ab v1.2.0)
-- Vollständiges Audit-Logging (ab v1.2.0)
+- Das Tool ruft nur Gentoo-Standardwerkzeuge auf (`emerge`, `eix-update`, `revdep-rebuild`, `eselect`, `etc-update`, `mirrorselect`, dazu `find`, `uname`, `mail`); es wird keine Shell verwendet
+- Dateien außerhalb von Portage werden nur in diesen Fällen geändert:
+  - `make.conf` / `repos.conf/zz-gentoo-updater.conf`: nur mit `--german-mirrors`, `--mirrors` oder `--use-mirrorselect` (Sicherung von `make.conf` wird angelegt)
+  - `/etc/portage/package.*`: Autounmask-Recovery (standardmäßig aktiv, abschaltbar mit `--no-auto-autounmask`)
+  - Dateien in `/etc`: nur mit `--etc-update-mode auto` (überschreibt eigene Anpassungen)
+- Vorgeschlagene `package.use`-Zeilen bei blockierten Paketen werden nur angezeigt, nie geschrieben (ab v2.2.0)
+- Konfigurationsdatei: `/etc/gentoo-updater.conf` (empfohlen: Rechte `0600`)
+- Automatische Backups vor Updates
+- Vollständiges Audit-Logging
 - Alle Aktionen werden angezeigt und können überwacht werden
 - Exit-Codes ermöglichen Fehlerüberwachung
 - Kernel-Updates werden NICHT automatisiert (Sicherheitsfeature)
@@ -56,11 +61,12 @@ Wenn Sie Cronjobs einrichten, werden diese mit Root-Rechten ausgeführt:
 
 ### Gentoo-spezifische Sicherheit
 - **Kernel-Updates**: Werden nur erkannt, niemals automatisch durchgeführt
-- **Konfigurations-Updates**: Werden erkannt, aber nicht automatisch angewendet
+- **Konfigurations-Updates**: Standardmäßig interaktiv; automatisch nur mit `--etc-update-mode auto`
 - **USE-Flag-Änderungen**: Können Neukompilierung auslösen
 - **depclean**: Kann in seltenen Fällen wichtige Pakete markieren
 - **revdep-rebuild**: Repariert nur kaputte Abhängigkeiten
-- **Mirror-Logging**: Zeigt alle konfigurierten Gentoo-Mirror (ab v1.3.0)
+- **Mirrors**: Werden bei jedem Lauf angezeigt, aber nur auf ausdrücklichen Wunsch geändert (ab v2.0.0)
+- **Blockierte Pakete**: Fehlende USE-Flags werden vorgeschlagen, nicht gesetzt (ab v2.2.0)
 
 ## Sicherheitslücken melden
 
@@ -68,7 +74,9 @@ Wenn Sie eine Sicherheitslücke im Gentoo System Updater entdecken, melden Sie d
 
 ### Kontakt
 - **GitHub Security Advisories**: Für kritische Sicherheitsprobleme (empfohlen)
-- **GitHub Issues**: Nur für nicht-kritische Probleme
+- **GitHub Issues**: Nur für nicht-kritische Probleme (nie für ausnutzbare Sicherheitslücken)
+
+Der aktuelle Security-Scan ist in [SECURITY_SCAN.md](SECURITY_SCAN.md) dokumentiert.
 
 ### Was Sie erwarten können
 1. **Bestätigung**: Innerhalb von 48 Stunden nach Meldung
