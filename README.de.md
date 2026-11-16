@@ -118,6 +118,8 @@ Dies erstellt `/etc/gentoo-updater.conf` mit folgenden Optionen:
 - **auto_revdep_rebuild**: Automatisches revdep-rebuild
 - **critical_packages**: Liste kritischer Pakete
 - **log_retention_days**: Log-Aufbewahrung in Tagen
+- **kernel_cleanup**: Reste alter Distribution-Kernel (`/lib/modules/<version>`, Kernel/Initramfs in `/boot`) nach depclean entfernen (Standard: `true`)
+- **kernel_keep**: So viele neueste Kernel bleiben immer erhalten (Standard: `2`; der laufende Kernel bleibt zusätzlich immer erhalten)
 
 Beispiel-Config: siehe [gentoo-updater.conf.example](gentoo-updater.conf.example)
 
@@ -141,6 +143,10 @@ sudo gentoo-updater --log-level DEBUG
 
 # Bestimmte Schritte überspringen
 sudo gentoo-updater --skip-cleanup --skip-revdep
+
+# Alte Kernel nicht entfernen / nur alte Kernel entfernen
+sudo gentoo-updater --skip-kernel-cleanup
+sudo gentoo-updater --clean-kernels --dry-run
 
 # Nur bestimmte Schritte ausführen
 sudo gentoo-updater --only-sync      # Nur Repository-Sync

@@ -439,6 +439,14 @@ HELP_TEXTS = {
         'de': 'Überspringe revdep-rebuild',
         'en': 'Skip revdep-rebuild'
     },
+    'skip_kernel_cleanup': {
+        'de': 'Alte Kernel (Module/boot-Dateien) nicht entfernen',
+        'en': 'Do not remove old kernels (modules/boot files)'
+    },
+    'clean_kernels': {
+        'de': 'Nur alte Distribution-Kernel entfernen (laufender und neueste bleiben erhalten)',
+        'en': 'Only remove old distribution kernels (running and newest are kept)'
+    },
     'skip_internet_check': {
         'de': 'Überspringe Internetverbindungs-Prüfung (nützlich für Offline-Tests)',
         'en': 'Skip internet connection check (useful for offline tests)'
@@ -804,6 +812,93 @@ def installed_dist_kernels(vdb: str = VDB_PATH) -> List[str]:
     return found
 
 
+MODULES_DIRS = ('/lib/modules', '/usr/lib/modules')
+BOOT_DIR = '/boot'
+# Kernelversionen der Distribution-Kernel, z.B. 6.18.8-gentoo-dist, 6.18.29-p2-gentoo-dist,
+# 6.18.63-gentoo-dist-bin, 6.12.1-dist (vanilla-kernel). Selbst gebaute Kernel passen nicht.
+DIST_KERNEL_VERSION_PATTERN = re.compile(r'^\d+\.\d+(\.\d+)?\S*-dist(-bin)?$')
+# Kernel-Dateien in /boot, die installkernel für eine Version anlegt
+BOOT_FILE_PREFIXES = ('kernel', 'vmlinuz', 'initramfs', 'System.map', 'config')
+BOOT_FILE_SUFFIXES = ('', '.img', '.old', '.img.old')
+CONTENTS_MODULES_PATTERN = re.compile(r'^(?:dir|obj|sym) (?:/usr)?/lib/modules/([^/\s]+)', re.MULTILINE)
+
+
+def kernel_version_key(version: str) -> Tuple[int, ...]:
+    """Sortierschlüssel für Kernelversionen (6.18.29-p2 > 6.18.29 > 6.18.8)"""
+    return tuple(int(n) for n in re.findall(r'\d+', version))
+
+
+def package_owned_module_versions(vdb: str = VDB_PATH) -> set:
+    """Kernelversionen, deren /lib/modules-Verzeichnis zu einem installierten Kernel-Paket gehört"""
+    owned = set()
+    for name in installed_dist_kernels(vdb):
+        try:
+            with open(os.path.join(vdb, name, 'CONTENTS'), 'r', errors='replace') as f:
+                owned.update(CONTENTS_MODULES_PATTERN.findall(f.read()))
+        except OSError:
+            continue
+    return owned
+
+
+def find_orphaned_dist_kernels(running: str, keep: int, vdb: str = VDB_PATH,
+                               modules_dirs: Tuple[str, ...] = MODULES_DIRS) -> List[str]:
+    """Liefert die Versionen alter Distribution-Kernel, die gefahrlos entfernt werden können
+
+    Entfernt wird nur, was
+      - wie ein Distribution-Kernel heißt (selbst gebaute Kernel bleiben unangetastet),
+      - zu keinem installierten Paket mehr gehört (Reste deinstallierter gentoo-kernel(-bin)),
+      - nicht der laufende Kernel ist und
+      - nicht zu den `keep` neuesten Distribution-Kerneln gehört (Fallback beim Booten).
+    """
+    versions = set()
+    for base in modules_dirs:
+        # /lib -> usr/lib (merged-usr): dasselbe Verzeichnis nicht doppelt zählen
+        if base != modules_dirs[0] and os.path.realpath(base) == os.path.realpath(modules_dirs[0]):
+            continue
+        try:
+            versions.update(e for e in os.listdir(base)
+                            if DIST_KERNEL_VERSION_PATTERN.match(e) and os.path.isdir(os.path.join(base, e)))
+        except OSError:
+            continue
+    newest = sorted(versions, key=kernel_version_key, reverse=True)[:max(keep, 1)]
+    protected = set(newest) | package_owned_module_versions(vdb) | {running}
+    return sorted(versions - protected, key=kernel_version_key)
+
+
+def kernel_cleanup_paths(version: str, modules_dirs: Tuple[str, ...] = MODULES_DIRS,
+                         boot_dir: str = BOOT_DIR) -> List[str]:
+    """Alle vorhandenen Dateien/Verzeichnisse einer Kernelversion (Module und /boot)"""
+    paths = []
+    seen = set()
+    candidates = [os.path.join(base, version) for base in modules_dirs]
+    candidates += [os.path.join(boot_dir, f"{prefix}-{version}{suffix}")
+                   for prefix in BOOT_FILE_PREFIXES for suffix in BOOT_FILE_SUFFIXES]
+    for path in candidates:
+        if os.path.lexists(path):
+            real = os.path.realpath(path)
+            if real not in seen:
+                seen.add(real)
+                paths.append(path)
+    return paths
+
+
+def path_size(path: str) -> int:
+    """Größe einer Datei oder eines Verzeichnisbaums in Bytes (Symlinks werden nicht verfolgt)"""
+    if os.path.islink(path) or not os.path.isdir(path):
+        try:
+            return os.lstat(path).st_size
+        except OSError:
+            return 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
 def is_kernel_package(name: str) -> bool:
     """Prüft, ob ein Paketname (ohne Version) ein Kernel-Paket ist"""
     return name in KERNEL_PACKAGES or (name.startswith('sys-kernel/') and name.endswith('-sources'))
@@ -899,7 +994,9 @@ class Config:
         'auto_depclean': True,
         'auto_revdep_rebuild': True,
         'critical_packages': ['sys-devel/gcc', 'sys-libs/glibc', 'dev-lang/python'],
-        'log_retention_days': 30
+        'log_retention_days': 30,
+        'kernel_cleanup': True,  # Reste alter Distribution-Kernel entfernen
+        'kernel_keep': 2         # so viele neueste Kernel immer behalten (plus laufender)
     }
     
     def __init__(self, config_file: str = '/etc/gentoo-updater.conf'):
@@ -980,6 +1077,7 @@ class GentooUpdater:
         self.skip_eix = False
         self.skip_cleanup = False
         self.skip_revdep = False
+        self.skip_kernel_cleanup = False
 
         # Zwischengespeichertes Ergebnis von emerge --pretend @world (siehe run_world_pretend)
         self.pretend_result = None
@@ -1005,6 +1103,8 @@ class GentooUpdater:
             'critical_packages': [],
             'kernel_updated': False,
             'modules_rebuilt': False,
+            'kernels_removed': [],
+            'kernel_space_freed_gb': 0,
             'errors': [],
             'warnings': [],
             'gentoo_mirrors': [],
@@ -2238,6 +2338,79 @@ class GentooUpdater:
         
         return success
         
+    def cleanup_old_kernels(self) -> bool:
+        """Entfernt Reste alter Distribution-Kernel (Module in /lib/modules, Kernel/Initramfs in /boot)
+
+        Beim Update von gentoo-kernel(-bin) bleiben die alten Modul-Verzeichnisse und
+        /boot-Dateien liegen (je Version ca. 0,7-1 GiB). Entfernt wird nur, was keinem
+        installierten Paket mehr gehört; der laufende Kernel und die neuesten
+        `kernel_keep` Kernel bleiben immer erhalten.
+        """
+        if not self.config.get('kernel_cleanup', True):
+            self.print_info("Kernel-Aufräumung deaktiviert (kernel_cleanup = false)")
+            return True
+
+        self.print_section("SCHRITT 6b: Entferne alte Kernel")
+
+        try:
+            keep = max(int(self.config.get('kernel_keep', 2)), 1)
+        except (TypeError, ValueError):
+            keep = 2
+        running = os.uname().release
+        orphaned = find_orphaned_dist_kernels(running, keep)
+
+        if not orphaned:
+            self.print_success("Keine alten Kernel zum Entfernen gefunden")
+            return True
+
+        total = 0
+        removed = []
+        success = True
+        verb = "Würde entfernen" if self.dry_run else "Entferne"
+        self.print_info(f"Behalte laufenden Kernel ({running}) und die {keep} neuesten Kernel")
+        for version in orphaned:
+            paths = kernel_cleanup_paths(version)
+            size = sum(path_size(p) for p in paths)
+            self.print_info(f"{verb} Kernel {version} ({size / 1024**3:.2f} GiB)")
+            for path in paths:
+                self.logger.debug(f"  {path}")
+            if self.dry_run:
+                total += size
+                removed.append(version)
+                continue
+            try:
+                for path in paths:
+                    if os.path.isdir(path) and not os.path.islink(path):
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+                total += size
+                removed.append(version)
+            except OSError as e:
+                self.print_warning(f"Kernel {version} konnte nicht vollständig entfernt werden: {e}")
+                success = False
+
+        if self.dry_run:
+            self.print_info(f"[DRY-RUN] {len(removed)} Kernel, {total / 1024**3:.2f} GiB würden frei")
+            return success
+
+        self.stats['kernels_removed'] = removed
+        self.stats['kernel_space_freed_gb'] = round(total / 1024**3, 2)
+        self.print_success(f"{len(removed)} alte(r) Kernel entfernt, {total / 1024**3:.2f} GiB frei geworden")
+
+        # Bootloader-Einträge der entfernten Kernel löschen
+        grub_cfg = Path(BOOT_DIR) / 'grub' / 'grub.cfg'
+        grub_mkconfig = shutil.which('grub-mkconfig') or shutil.which('grub2-mkconfig')
+        if removed and grub_cfg.exists() and grub_mkconfig:
+            ok, _out = self.run_command([grub_mkconfig, '-o', str(grub_cfg)],
+                                        "Aktualisiere GRUB-Konfiguration", allow_fail=True)
+            if not ok:
+                self.print_warning(f"GRUB-Konfiguration bitte manuell erneuern: grub-mkconfig -o {grub_cfg}")
+                success = False
+        elif removed:
+            self.print_warning("Kein GRUB gefunden - Bootloader-Einträge bitte manuell prüfen")
+        return success
+
     def revdep_rebuild(self) -> bool:
         """Baut Pakete mit kaputten Abhängigkeiten neu"""
         if not self.config.get('auto_revdep_rebuild', True):
@@ -2477,6 +2650,13 @@ class GentooUpdater:
         
         if self.stats['modules_rebuilt']:
             print(f"{Colors.OKGREEN}{symbol('checkmark')} Kernel-Module neu gebaut{Colors.ENDC}")
+            print()
+
+        if self.stats['kernels_removed']:
+            print(f"{Colors.OKCYAN}Alte Kernel entfernt ({len(self.stats['kernels_removed'])}, "
+                  f"{self.stats['kernel_space_freed_gb']:.2f} GiB frei):{Colors.ENDC}")
+            for version in self.stats['kernels_removed']:
+                print(f"  • {version}")
             print()
         
         # Zeige kritische Pakete speziell an wenn vorhanden
@@ -2776,6 +2956,13 @@ Details siehe: {self.log_file}
             else:
                 print(f"{Colors.WARNING}{symbol('skip')} Skipping depclean (--skip-cleanup){Colors.ENDC}")
 
+            # Schritt 6b: Alte Kernel entfernen (nach depclean, damit gerade
+            # deinstallierte Kernel-Pakete schon berücksichtigt werden)
+            if not self.skip_kernel_cleanup:
+                self.cleanup_old_kernels()
+            else:
+                print(f"{Colors.WARNING}{symbol('skip')} Skipping kernel cleanup (--skip-kernel-cleanup){Colors.ENDC}")
+
             # Schritt 7: revdep-rebuild (wenn nicht übersprungen)
             if not self.skip_revdep:
                 self.revdep_rebuild()
@@ -2942,7 +3129,13 @@ Umgebungsvariablen:
     parser.add_argument('--skip-revdep',
                        action='store_true',
                        help=get_help_text('skip_revdep'))
-    
+    parser.add_argument('--skip-kernel-cleanup',
+                       action='store_true',
+                       help=get_help_text('skip_kernel_cleanup'))
+    parser.add_argument('--clean-kernels',
+                       action='store_true',
+                       help=get_help_text('clean_kernels'))
+
     parser.add_argument('--skip-internet-check',
                        action='store_true',
                        help=get_help_text('skip_internet_check'))
@@ -3125,7 +3318,8 @@ Umgebungsvariablen:
 
     # ===== KRITISCHE CHECKS: INTERNET-VERBINDUNG =====
     # Prüfe Internet-Verbindung, sofern nicht übersprungen
-    skip_internet_check = getattr(args, 'skip_internet_check', False) or env_skip_internet_check
+    skip_internet_check = (getattr(args, 'skip_internet_check', False) or env_skip_internet_check
+                           or args.clean_kernels)
     if not skip_internet_check:
         print(f"\n{Colors.OKCYAN}🌐 Prüfe Internetverbindung...{Colors.ENDC}")
         if not check_internet_connection():
@@ -3200,6 +3394,10 @@ Umgebungsvariablen:
             updater.update_system()
         elif args.only_cleanup:
             updater.depclean()
+        elif args.clean_kernels:
+            # explizit angefordert: auch bei kernel_cleanup = false ausführen
+            config.config['kernel_cleanup'] = True
+            updater.cleanup_old_kernels()
         # Spezifische Operationen überspringen (--skip-*)
         else:
             updater.skip_sync = args.skip_sync
@@ -3207,6 +3405,7 @@ Umgebungsvariablen:
             updater.skip_eix = args.skip_eix
             updater.skip_cleanup = args.skip_cleanup
             updater.skip_revdep = args.skip_revdep
+            updater.skip_kernel_cleanup = args.skip_kernel_cleanup
             updater.run_full_update()
             
     except KeyboardInterrupt:

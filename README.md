@@ -120,6 +120,8 @@ This creates `/etc/gentoo-updater.conf` with options:
 - **auto_revdep_rebuild**: Enable automatic revdep-rebuild
 - **critical_packages**: List of critical packages
 - **log_retention_days**: Log retention in days
+- **kernel_cleanup**: Remove leftovers of old distribution kernels (`/lib/modules/<version>`, kernel/initramfs in `/boot`) after depclean (default: `true`)
+- **kernel_keep**: Number of newest kernels that are always kept (default: `2`; the running kernel is always kept as well)
 
 Example config: see [gentoo-updater.conf.example](gentoo-updater.conf.example)
 
@@ -143,6 +145,10 @@ sudo gentoo-updater --log-level DEBUG
 
 # Skip specific steps
 sudo gentoo-updater --skip-cleanup --skip-revdep
+
+# Do not remove old kernels / remove only old kernels
+sudo gentoo-updater --skip-kernel-cleanup
+sudo gentoo-updater --clean-kernels --dry-run
 
 # Skip internet connection check (useful for offline systems)
 sudo gentoo-updater --skip-internet-check
