@@ -1,4 +1,4 @@
-## Unreleased
+## v2.3.0 (2026-11-16)
 - Neu: Alte Distribution-Kernel werden nach depclean automatisch entfernt (`/lib/modules/<version>` sowie Kernel/Initramfs in `/boot`, danach `grub-mkconfig`). Portage lässt diese Reste beim Update von `gentoo-kernel(-bin)` liegen (je Version ca. 0,7-1 GiB)
   - Entfernt wird nur, was keinem installierten Paket mehr gehört; der laufende Kernel und die neuesten `kernel_keep` (Standard 2) Kernel bleiben erhalten, selbst gebaute Kernel werden nie angefasst
   - Konfiguration: `kernel_cleanup` (Standard `true`), `kernel_keep` (Standard `2`)
