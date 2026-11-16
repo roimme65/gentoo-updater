@@ -15,8 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 = Mindestversion (argparse.BooleanOptionalAction)
-        python-version: [ '3.9', '3.11', '3.12', '3.13' ]
+        # Mindestversion des Skripts ist 3.9 (argparse.BooleanOptionalAction); die
+        # Ubuntu-Runner bieten 3.9 nicht mehr an, daher ist 3.10 die älteste getestete Version
+        python-version: [ '3.10', '3.11', '3.12', '3.13' ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
