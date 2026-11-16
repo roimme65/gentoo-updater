@@ -1,3 +1,10 @@
+## Unreleased
+- Neu: Alte Distribution-Kernel werden nach depclean automatisch entfernt (`/lib/modules/<version>` sowie Kernel/Initramfs in `/boot`, danach `grub-mkconfig`). Portage lässt diese Reste beim Update von `gentoo-kernel(-bin)` liegen (je Version ca. 0,7-1 GiB)
+  - Entfernt wird nur, was keinem installierten Paket mehr gehört; der laufende Kernel und die neuesten `kernel_keep` (Standard 2) Kernel bleiben erhalten, selbst gebaute Kernel werden nie angefasst
+  - Konfiguration: `kernel_cleanup` (Standard `true`), `kernel_keep` (Standard `2`)
+  - Neue Optionen: `--skip-kernel-cleanup`, `--clean-kernels` (nur aufräumen, mit `--dry-run` als Vorschau)
+  - Zusammenfassung/JSON: `kernels_removed`, `kernel_space_freed_gb`
+
 ## v2.2.0 (2026-11-07)
 - Neu: Bei blockierten Paketen bzw. Slot-Konflikten wertet der Updater die USE-Anforderungen aus der emerge-Ausgabe aus und schlägt fehlende Flags als `package.use`-Zeile vor (z.B. `dev-qt/qttools designer`, wenn `dev-python/pyside[tools]` es verlangt)
 - Security: Vorgeschlagene `package.use`-Zeilen enthalten nur gültige Paket-/USE-Flag-Namen (Schutz vor manipulierten Overlay-Ebuilds)

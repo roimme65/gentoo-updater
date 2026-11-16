@@ -15,5 +15,7 @@
   ],
   "log_retention_days": 30,
   "resolve_blocks": false,
-  "backtrack_level": 20
+  "backtrack_level": 20,
+  "kernel_cleanup": true,
+  "kernel_keep": 2
 }
